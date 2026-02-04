@@ -345,23 +345,23 @@ function New-Shortcuts {
         [System.IO.File]::WriteAllBytes($path, $bytes)
     }
 
-    # Desktop shortcut
+    # Desktop shortcut - use cmd.exe to ensure proper console environment
     $desktopPath = [Environment]::GetFolderPath("Desktop")
     $desktopShortcut = Join-Path $desktopPath "AutoPaqet.lnk"
     $shortcut = $WshShell.CreateShortcut($desktopShortcut)
-    $shortcut.TargetPath = $script:ExePath
-    $shortcut.Arguments = "run -c `"$($script:ConfigFile)`""
+    $shortcut.TargetPath = "cmd.exe"
+    $shortcut.Arguments = "/k `"`"$($script:ExePath)`" run -c `"$($script:ConfigFile)`"`""
     $shortcut.WorkingDirectory = $script:RequirementsDir
     $shortcut.Description = "AutoPaqet SOCKS5 Proxy Client"
     $shortcut.Save()
     & $setAdmin $desktopShortcut
 
-    # Start Menu shortcut
+    # Start Menu shortcut - use cmd.exe to ensure proper console environment
     $startMenuPath = Join-Path ([Environment]::GetFolderPath("StartMenu")) "Programs"
     $startMenuShortcut = Join-Path $startMenuPath "AutoPaqet.lnk"
     $shortcut = $WshShell.CreateShortcut($startMenuShortcut)
-    $shortcut.TargetPath = $script:ExePath
-    $shortcut.Arguments = "run -c `"$($script:ConfigFile)`""
+    $shortcut.TargetPath = "cmd.exe"
+    $shortcut.Arguments = "/k `"`"$($script:ExePath)`" run -c `"$($script:ConfigFile)`"`""
     $shortcut.WorkingDirectory = $script:RequirementsDir
     $shortcut.Description = "AutoPaqet SOCKS5 Proxy Client"
     $shortcut.Save()

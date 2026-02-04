@@ -311,9 +311,10 @@ function New-DesktopShortcut {
     $desktopPath = [Environment]::GetFolderPath("Desktop")
     $shortcutPath = Join-Path $desktopPath "$Name.lnk"
 
+    # Use cmd.exe to ensure proper console environment
     $shortcut = $WshShell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = $ExePath
-    $shortcut.Arguments = "run -c `"$ConfigPath`""
+    $shortcut.TargetPath = "cmd.exe"
+    $shortcut.Arguments = "/k `"`"$ExePath`" run -c `"$ConfigPath`"`""
     $shortcut.WorkingDirectory = Split-Path $ExePath -Parent
     $shortcut.Description = "AutoPaqet SOCKS5 Proxy Client"
     $shortcut.Save()
@@ -350,9 +351,10 @@ function New-StartMenuShortcut {
     $programsPath = Join-Path $startMenuPath "Programs"
     $shortcutPath = Join-Path $programsPath "$Name.lnk"
 
+    # Use cmd.exe to ensure proper console environment
     $shortcut = $WshShell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = $ExePath
-    $shortcut.Arguments = "run -c `"$ConfigPath`""
+    $shortcut.TargetPath = "cmd.exe"
+    $shortcut.Arguments = "/k `"`"$ExePath`" run -c `"$ConfigPath`"`""
     $shortcut.WorkingDirectory = Split-Path $ExePath -Parent
     $shortcut.Description = "AutoPaqet SOCKS5 Proxy Client"
     $shortcut.Save()
