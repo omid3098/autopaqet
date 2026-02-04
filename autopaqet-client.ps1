@@ -13,7 +13,15 @@
 
     Interactive mode (run script directly):
         .\autopaqet-client.ps1
+
+    Direct run mode (bypass menu):
+        .\autopaqet-client.ps1 -Run
 #>
+
+param(
+    [switch]$Run,    # Direct execution mode - bypass menu and run client
+    [switch]$Help    # Show help information
+)
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -163,6 +171,123 @@ function Show-Confirmation {
 function Wait-ForKeypress { Write-Host ""; Read-Host "Press Enter to continue" }
 
 function Test-InteractiveMode { return [Environment]::UserInteractive -and -not [Console]::IsInputRedirected }
+
+# =============================================================================
+# Installation State Detection
+# =============================================================================
+function Get-InstallationState {
+    $state = @{
+        BinaryExists      = $false
+        ConfigExists      = $false
+        ConfigValid       = $false
+        IsFullyInstalled  = $false
+        State             = "NotInstalled"
+        Issues            = @()
+    }
+
+    # Check binary
+    $state.BinaryExists = Test-Path $script:ExePath
+    if (-not $state.BinaryExists) {
+        $state.Issues += "Binary not found"
+    }
+
+    # Check config file
+    $state.ConfigExists = Test-Path $script:ConfigFile
+    if (-not $state.ConfigExists) {
+        $state.Issues += "Configuration not found"
+    } else {
+        # Validate config content
+        try {
+            $configContent = Get-Content $script:ConfigFile -Raw -ErrorAction Stop
+            $hasServer = $configContent -match 'server:\s*\n\s*addr:\s*"[^"]+"'
+            $hasKey = $configContent -match 'key:\s*"[^"]+"'
+            $hasInterface = $configContent -match 'interface:\s*"[^"]+"'
+
+            if (-not $hasServer) { $state.Issues += "Missing server address" }
+            if (-not $hasKey) { $state.Issues += "Missing secret key" }
+            if (-not $hasInterface) { $state.Issues += "Missing network interface" }
+
+            $state.ConfigValid = $hasServer -and $hasKey -and $hasInterface
+        } catch {
+            $state.Issues += "Failed to read configuration"
+        }
+    }
+
+    # Determine overall state
+    if ($state.BinaryExists -and $state.ConfigValid) {
+        $state.State = "Ready"
+        $state.IsFullyInstalled = $true
+    } elseif ($state.BinaryExists -and $state.ConfigExists) {
+        $state.State = "Configured"
+    } elseif ($state.BinaryExists -or $state.ConfigExists) {
+        $state.State = "PartialInstall"
+    } else {
+        $state.State = "NotInstalled"
+    }
+
+    return $state
+}
+
+function Invoke-RunClient {
+    param([switch]$ReturnToMenu)
+
+    $installState = Get-InstallationState
+
+    if (-not $installState.BinaryExists) {
+        Write-Host "`n[ERROR] AutoPaqet binary not found." -ForegroundColor Red
+        Write-Host "Expected: $($script:ExePath)" -ForegroundColor Yellow
+        Write-Host "`nPlease run Fresh Install first." -ForegroundColor Yellow
+        if ($ReturnToMenu) { Wait-ForKeypress; return $false }
+        exit 1
+    }
+
+    if (-not $installState.ConfigExists) {
+        Write-Host "`n[ERROR] Configuration file not found." -ForegroundColor Red
+        Write-Host "Expected: $($script:ConfigFile)" -ForegroundColor Yellow
+        Write-Host "`nPlease run Fresh Install first." -ForegroundColor Yellow
+        if ($ReturnToMenu) { Wait-ForKeypress; return $false }
+        exit 1
+    }
+
+    if (-not $installState.ConfigValid) {
+        Write-Host "`n[WARN] Configuration may be incomplete:" -ForegroundColor Yellow
+        foreach ($issue in $installState.Issues) {
+            Write-Host "  - $issue" -ForegroundColor Yellow
+        }
+        if (Test-InteractiveMode) {
+            if (-not (Show-Confirmation "`nAttempt to run anyway?")) {
+                if ($ReturnToMenu) { return $false }
+                exit 1
+            }
+        }
+    }
+
+    Write-Host "`n[INFO] Starting AutoPaqet Client..." -ForegroundColor Cyan
+    Write-Host "Config: $($script:ConfigFile)" -ForegroundColor Gray
+    Write-Host "Press Ctrl+C to stop.`n" -ForegroundColor Gray
+
+    try {
+        & $script:ExePath run -c $script:ConfigFile
+        $exitCode = $LASTEXITCODE
+        if ($exitCode -ne 0) {
+            Write-Host "`n[WARN] Client exited with code: $exitCode" -ForegroundColor Yellow
+        } else {
+            Write-Host "`n[INFO] Client stopped." -ForegroundColor Cyan
+        }
+    } catch {
+        Write-Host "`n[ERROR] Failed to start client: $_" -ForegroundColor Red
+        if ($ReturnToMenu) { Wait-ForKeypress; return $false }
+        exit 1
+    }
+
+    if ($ReturnToMenu -and (Test-InteractiveMode)) {
+        Write-Host ""
+        $action = Read-Host "Press Enter to return to menu, or 'q' to exit"
+        if ($action -eq 'q' -or $action -eq 'Q') { exit 0 }
+    }
+
+    return $true
+}
 
 # =============================================================================
 # Dependencies Configuration
@@ -345,27 +470,52 @@ function New-Shortcuts {
         [System.IO.File]::WriteAllBytes($path, $bytes)
     }
 
-    # Desktop shortcut - use cmd.exe to ensure proper console environment
+    # Save the script locally for shortcut execution
+    $localScriptPath = Join-Path $script:WorkDir "autopaqet-client.ps1"
+    if (-not (Test-Path $localScriptPath)) {
+        try {
+            $scriptUrl = "$($script:AutoPaqetRepoUrl)/autopaqet-client.ps1"
+            Invoke-WebRequest -Uri $scriptUrl -OutFile $localScriptPath -UseBasicParsing
+        } catch {
+            # If download fails and we're running from a file, copy it
+            $currentScript = $MyInvocation.ScriptName
+            if ($currentScript -and (Test-Path $currentScript)) {
+                Copy-Item -Path $currentScript -Destination $localScriptPath -Force
+            }
+        }
+    }
+
+    # Desktop shortcut - launches with -Run flag for direct execution
     $desktopPath = [Environment]::GetFolderPath("Desktop")
     $desktopShortcut = Join-Path $desktopPath "AutoPaqet.lnk"
     $shortcut = $WshShell.CreateShortcut($desktopShortcut)
-    $shortcut.TargetPath = "cmd.exe"
-    $shortcut.Arguments = "/k `"`"$($script:ExePath)`" run -c `"$($script:ConfigFile)`"`""
-    $shortcut.WorkingDirectory = $script:RequirementsDir
+    $shortcut.TargetPath = "powershell.exe"
+    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$localScriptPath`" -Run"
+    $shortcut.WorkingDirectory = $script:WorkDir
     $shortcut.Description = "AutoPaqet SOCKS5 Proxy Client"
     $shortcut.Save()
     & $setAdmin $desktopShortcut
 
-    # Start Menu shortcut - use cmd.exe to ensure proper console environment
+    # Start Menu shortcut - same as desktop
     $startMenuPath = Join-Path ([Environment]::GetFolderPath("StartMenu")) "Programs"
     $startMenuShortcut = Join-Path $startMenuPath "AutoPaqet.lnk"
     $shortcut = $WshShell.CreateShortcut($startMenuShortcut)
-    $shortcut.TargetPath = "cmd.exe"
-    $shortcut.Arguments = "/k `"`"$($script:ExePath)`" run -c `"$($script:ConfigFile)`"`""
-    $shortcut.WorkingDirectory = $script:RequirementsDir
+    $shortcut.TargetPath = "powershell.exe"
+    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$localScriptPath`" -Run"
+    $shortcut.WorkingDirectory = $script:WorkDir
     $shortcut.Description = "AutoPaqet SOCKS5 Proxy Client"
     $shortcut.Save()
     & $setAdmin $startMenuShortcut
+
+    # Manager shortcut - opens menu for configuration/diagnostics
+    $managerShortcut = Join-Path $startMenuPath "AutoPaqet Manager.lnk"
+    $shortcut = $WshShell.CreateShortcut($managerShortcut)
+    $shortcut.TargetPath = "powershell.exe"
+    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$localScriptPath`""
+    $shortcut.WorkingDirectory = $script:WorkDir
+    $shortcut.Description = "AutoPaqet Configuration Manager"
+    $shortcut.Save()
+    & $setAdmin $managerShortcut
 
     # Uninstall shortcut
     $uninstallShortcut = Join-Path $startMenuPath "Uninstall AutoPaqet.lnk"
@@ -376,7 +526,7 @@ function New-Shortcuts {
     $shortcut.Save()
     & $setAdmin $uninstallShortcut
 
-    Write-Success "Shortcuts created"
+    Write-Success "Shortcuts created (Desktop, Start Menu, Manager)"
 }
 
 # =============================================================================
@@ -680,27 +830,101 @@ function Show-DiagnosticsMenu {
 }
 
 function Show-MainMenuLoop {
-    $options = @(
-        "Fresh Install",
-        "Update AutoPaqet (download latest installer)",
-        "Update Paqet (git pull + rebuild)",
-        "Uninstall",
-        "Configuration",
-        "Diagnostics"
-    )
-
     while ($true) {
-        $choice = Show-Menu -Title "AUTOPAQET CLIENT" -Options $options
+        # Detect installation state for adaptive menu
+        $installState = Get-InstallationState
 
-        switch ($choice) {
-            0 { return }
-            1 { Invoke-FreshInstall; return }
-            2 { Invoke-UpdateAutoPaqet }
-            3 { Invoke-UpdatePaqet }
-            4 { Invoke-Uninstall; return }
-            5 { Show-ConfigurationMenu }
-            6 { Show-DiagnosticsMenu }
-            -1 { Write-Host "Invalid option. Please try again." -ForegroundColor Red; Start-Sleep -Seconds 1 }
+        # Build menu options based on state
+        $options = @()
+        $actions = @{}
+        $optionIndex = 1
+
+        if ($installState.IsFullyInstalled) {
+            # Installed and configured - prioritize running
+            $options += "Run Client"
+            $actions[$optionIndex++] = "RunClient"
+
+            $options += "Configuration"
+            $actions[$optionIndex++] = "Configuration"
+
+            $options += "Diagnostics"
+            $actions[$optionIndex++] = "Diagnostics"
+
+            $options += "Update Paqet (git pull + rebuild)"
+            $actions[$optionIndex++] = "UpdatePaqet"
+
+            $options += "Update AutoPaqet (download latest installer)"
+            $actions[$optionIndex++] = "UpdateAutoPaqet"
+
+            $options += "Reinstall (Fresh Install)"
+            $actions[$optionIndex++] = "FreshInstall"
+
+            $options += "Uninstall"
+            $actions[$optionIndex++] = "Uninstall"
+        } elseif ($installState.State -eq "Configured" -or $installState.State -eq "PartialInstall") {
+            # Partial installation - show repair options first
+            $options += "Complete/Repair Installation"
+            $actions[$optionIndex++] = "FreshInstall"
+
+            if ($installState.BinaryExists) {
+                $options += "Run Client (may have issues)"
+                $actions[$optionIndex++] = "RunClient"
+            }
+
+            $options += "Configuration"
+            $actions[$optionIndex++] = "Configuration"
+
+            $options += "Diagnostics"
+            $actions[$optionIndex++] = "Diagnostics"
+
+            $options += "Uninstall"
+            $actions[$optionIndex++] = "Uninstall"
+        } else {
+            # Not installed - prioritize fresh install
+            $options += "Fresh Install"
+            $actions[$optionIndex++] = "FreshInstall"
+
+            $options += "Diagnostics"
+            $actions[$optionIndex++] = "Diagnostics"
+        }
+
+        # Status footer
+        $statusColor = switch ($installState.State) {
+            "Ready" { "Green" }
+            "Configured" { "Yellow" }
+            "PartialInstall" { "Yellow" }
+            default { "Gray" }
+        }
+        $statusText = switch ($installState.State) {
+            "Ready" { "Status: Ready to run" }
+            "Configured" { "Status: Configured (validation issues)" }
+            "PartialInstall" { "Status: Partial installation" }
+            default { "Status: Not installed" }
+        }
+        $footer = $statusText
+        if ($installState.Issues.Count -gt 0 -and $installState.State -ne "Ready") {
+            $footer += " | Issues: $($installState.Issues -join '; ')"
+        }
+
+        $choice = Show-Menu -Title "AUTOPAQET CLIENT" -Options $options -Footer $footer
+
+        if ($choice -eq 0) { return }
+        if ($choice -eq -1) {
+            Write-Host "Invalid option. Please try again." -ForegroundColor Red
+            Start-Sleep -Seconds 1
+            continue
+        }
+
+        # Execute selected action
+        $action = $actions[$choice]
+        switch ($action) {
+            "RunClient" { Invoke-RunClient -ReturnToMenu }
+            "FreshInstall" { Invoke-FreshInstall; return }
+            "Configuration" { Show-ConfigurationMenu }
+            "Diagnostics" { Show-DiagnosticsMenu }
+            "UpdatePaqet" { Invoke-UpdatePaqet }
+            "UpdateAutoPaqet" { Invoke-UpdateAutoPaqet }
+            "Uninstall" { Invoke-Uninstall; return }
         }
     }
 }
@@ -709,18 +933,68 @@ function Show-MainMenuLoop {
 # Main Entry Point
 # =============================================================================
 
+# Show help if requested
+if ($Help) {
+    Write-Host @"
+
+AutoPaqet Client for Windows
+============================
+
+USAGE:
+    .\autopaqet-client.ps1              # Interactive menu mode
+    .\autopaqet-client.ps1 -Run         # Direct execution (bypass menu)
+    .\autopaqet-client.ps1 -Help        # Show this help
+
+ONE-LINER INSTALLATION:
+    irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex
+
+WITH SERVER CONFIGURATION:
+    `$env:AUTOPAQET_SERVER="1.2.3.4:9999"; `$env:AUTOPAQET_KEY="your-key"; irm ... | iex
+
+PARAMETERS:
+    -Run    Start the client directly without showing menu
+            Requires prior installation and configuration
+
+    -Help   Display this help message
+
+"@ -ForegroundColor Cyan
+    exit 0
+}
+
 # Check admin privileges
 if (-not (Test-AdminPrivileges)) {
+    # Pass through -Run flag if specified during elevation
+    if ($Run) {
+        $localScript = Join-Path $script:WorkDir "autopaqet-client.ps1"
+        if (Test-Path $localScript) {
+            Start-Process powershell.exe -Verb RunAs -ArgumentList `
+                "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$localScript`"", "-Run"
+        } else {
+            # If script not found locally, re-download and run
+            $envParams = ""
+            if ($env:AUTOPAQET_SERVER) { $envParams += "`$env:AUTOPAQET_SERVER='$env:AUTOPAQET_SERVER'; " }
+            if ($env:AUTOPAQET_KEY) { $envParams += "`$env:AUTOPAQET_KEY='$env:AUTOPAQET_KEY'; " }
+            $scriptUrl = "$($script:AutoPaqetRepoUrl)/autopaqet-client.ps1"
+            $elevatedCmd = "${envParams}irm '$scriptUrl' | iex"
+            Start-Process powershell.exe -Verb RunAs -ArgumentList `
+                "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $elevatedCmd
+        }
+        exit
+    }
     Request-AdminElevation
 }
 
 # Detect mode: piped (one-liner) or interactive
 $isPiped = [Console]::IsInputRedirected
 
-if ($isPiped) {
+if ($Run) {
+    # Direct run mode: execute client immediately
+    Invoke-RunClient
+    exit $LASTEXITCODE
+} elseif ($isPiped) {
     # One-liner mode: run fresh install directly
     Invoke-FreshInstall
 } else {
-    # Interactive mode: show menu
+    # Interactive mode: show smart menu
     Show-MainMenuLoop
 }

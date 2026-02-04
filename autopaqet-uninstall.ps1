@@ -47,8 +47,8 @@ if (-not (Test-Path $installDir)) {
 Write-Host ""
 Write-Host "This will remove:" -ForegroundColor Yellow
 Write-Host "  - Installation folder: $installDir" -ForegroundColor White
-Write-Host "  - Desktop shortcut" -ForegroundColor White
-Write-Host "  - Start Menu shortcuts" -ForegroundColor White
+Write-Host "  - Desktop shortcut (AutoPaqet)" -ForegroundColor White
+Write-Host "  - Start Menu shortcuts (AutoPaqet, Manager, Uninstall)" -ForegroundColor White
 Write-Host ""
 Write-Host "Dependencies (Git, Go, GCC, Npcap) will NOT be removed." -ForegroundColor Cyan
 Write-Host ""
@@ -69,6 +69,7 @@ $startMenu = Join-Path ([Environment]::GetFolderPath("StartMenu")) "Programs"
 $shortcuts = @(
     (Join-Path $desktop "AutoPaqet.lnk"),
     (Join-Path $startMenu "AutoPaqet.lnk"),
+    (Join-Path $startMenu "AutoPaqet Manager.lnk"),
     (Join-Path $startMenu "Uninstall AutoPaqet.lnk")
 )
 
