@@ -24,3 +24,6 @@ $RECYCLE.BIN/
 *.lnk
 requirements/*
 .claude/*
+
+# Windows reserved name created by bash redirects (>nul)
+nul

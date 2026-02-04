@@ -75,7 +75,7 @@ The client script (`autopaqet-client.ps1`) performs the following:
 %USERPROFILE%\autopaqet\
 ├── requirements\
 │   ├── autopaqet\          # Cloned source code
-│   ├── autopaqet.exe       # Built binary
+│   ├── paqet.exe           # Built binary
 │   ├── client.yaml         # Generated configuration
 │   ├── setup.log           # Installation log
 │   └── *.exe / *.msi       # Cached installers
@@ -86,10 +86,6 @@ The client script (`autopaqet-client.ps1`) performs the following:
 ### Alternative: Local Script Execution
 
 If you prefer to run the scripts locally:
-
-**Windows (Batch):**
-1. Right-click `autopaqet-client.bat`
-2. Select "Run as administrator"
 
 **Windows (PowerShell):**
 ```powershell
@@ -124,11 +120,27 @@ systemctl stop autopaqet
 
 ### Client (Windows)
 
-```powershell
-# Re-run setup (from installation directory)
-cd $env:USERPROFILE\autopaqet\requirements
-.\autopaqet.exe run -c client.yaml
+After installation, you can launch AutoPaqet from:
+- **Desktop:** Double-click "AutoPaqet" shortcut
+- **Start Menu:** Search for "AutoPaqet"
 
-# View configuration
-notepad $env:USERPROFILE\autopaqet\requirements\client.yaml
+Or manually from PowerShell:
+```powershell
+cd $env:USERPROFILE\autopaqet\requirements
+.\paqet.exe run -c client.yaml
 ```
+
+---
+
+## Uninstall
+
+### Client (Windows)
+
+Run in PowerShell:
+```powershell
+irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-uninstall.ps1 | iex
+```
+
+Or search for "Uninstall AutoPaqet" in the Start Menu.
+
+This removes the installation folder and shortcuts. Dependencies (Git, Go, GCC, Npcap) are not removed.

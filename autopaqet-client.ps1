@@ -294,7 +294,7 @@ if ($npcapInstalled) {
 # 3. Clone and Build
 # -----------------------------------------------------------------------------
 $srcDir = Join-Path $RequirementsDir "autopaqet"
-$exePath = Join-Path $RequirementsDir "autopaqet.exe"
+$exePath = Join-Path $RequirementsDir "paqet.exe"
 
 Write-Log "Source directory: $srcDir" -Level "DEBUG"
 Write-Log "Binary path: $exePath" -Level "DEBUG"
@@ -505,6 +505,66 @@ transport:
     Write-Success "Configuration file found: $configFile"
     Write-Warn "Using existing config. If network changed (IP/MAC), delete client.yaml and re-run."
 }
+
+# -----------------------------------------------------------------------------
+# 5.5 Create Shortcuts
+# -----------------------------------------------------------------------------
+Write-Info "Creating shortcuts..."
+
+# Helper function to set "Run as Administrator" flag on shortcut
+function Set-ShortcutRunAsAdmin {
+    param([string]$ShortcutPath)
+    $bytes = [System.IO.File]::ReadAllBytes($ShortcutPath)
+    $bytes[0x15] = $bytes[0x15] -bor 0x20  # Set SLDF_RUNAS_USER flag
+    [System.IO.File]::WriteAllBytes($ShortcutPath, $bytes)
+}
+
+$shortcutName = "AutoPaqet"
+$WshShell = New-Object -ComObject WScript.Shell
+
+# Desktop Shortcut
+$desktopPath = [Environment]::GetFolderPath("Desktop")
+$desktopShortcut = Join-Path $desktopPath "$shortcutName.lnk"
+Write-Log "Creating desktop shortcut: $desktopShortcut" -Level "INFO"
+$shortcut = $WshShell.CreateShortcut($desktopShortcut)
+$shortcut.TargetPath = $exePath
+$shortcut.Arguments = "run -c `"$configFile`""
+$shortcut.WorkingDirectory = $RequirementsDir
+$shortcut.Description = "AutoPaqet SOCKS5 Proxy Client"
+$shortcut.Save()
+Set-ShortcutRunAsAdmin -ShortcutPath $desktopShortcut
+Write-Log "Desktop shortcut created" -Level "SUCCESS"
+
+# Start Menu Shortcut
+$startMenuPath = [Environment]::GetFolderPath("StartMenu")
+$programsPath = Join-Path $startMenuPath "Programs"
+$startMenuShortcut = Join-Path $programsPath "$shortcutName.lnk"
+Write-Log "Creating Start Menu shortcut: $startMenuShortcut" -Level "INFO"
+$shortcut = $WshShell.CreateShortcut($startMenuShortcut)
+$shortcut.TargetPath = $exePath
+$shortcut.Arguments = "run -c `"$configFile`""
+$shortcut.WorkingDirectory = $RequirementsDir
+$shortcut.Description = "AutoPaqet SOCKS5 Proxy Client"
+$shortcut.Save()
+Set-ShortcutRunAsAdmin -ShortcutPath $startMenuShortcut
+Write-Log "Start Menu shortcut created" -Level "SUCCESS"
+
+# Uninstall Shortcut (Start Menu only)
+$uninstallUrl = "https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-uninstall.ps1"
+$uninstallShortcut = Join-Path $programsPath "Uninstall AutoPaqet.lnk"
+Write-Log "Creating uninstall shortcut: $uninstallShortcut" -Level "INFO"
+$shortcut = $WshShell.CreateShortcut($uninstallShortcut)
+$shortcut.TargetPath = "powershell.exe"
+$shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"irm '$uninstallUrl' | iex`""
+$shortcut.Description = "Uninstall AutoPaqet"
+$shortcut.Save()
+Set-ShortcutRunAsAdmin -ShortcutPath $uninstallShortcut
+Write-Log "Uninstall shortcut created" -Level "SUCCESS"
+
+Write-Success "Shortcuts created:"
+Write-Host "  - Desktop: $desktopShortcut" -ForegroundColor White
+Write-Host "  - Start Menu: Search for 'AutoPaqet'" -ForegroundColor White
+Write-Host "  - Uninstall: Search for 'Uninstall AutoPaqet'" -ForegroundColor White
 
 # -----------------------------------------------------------------------------
 # 6. Launch
