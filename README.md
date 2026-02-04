@@ -9,6 +9,7 @@ Automated setup scripts for the [paqet](https://github.com/hanselime/paqet) proj
 ```bash
 curl -fsSL https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-server.sh | sudo bash
 ```
+<img width="409" height="294" alt="image" src="https://github.com/user-attachments/assets/950e377e-9daf-46c9-8a46-684ab656133e" />
 
 ### Client (Windows)
 
@@ -17,12 +18,7 @@ Run in PowerShell (as Administrator):
 ```powershell
 irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex
 ```
-
-Or with pre-configured server settings:
-
-```powershell
-$env:AUTOPAQET_SERVER="YOUR_SERVER_IP:9999"; $env:AUTOPAQET_KEY="YOUR_SECRET_KEY"; irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex
-```
+<img width="515" height="226" alt="image" src="https://github.com/user-attachments/assets/d2be1bef-b142-4c18-8ce9-b2258f1a86c6" />
 
 ---
 
