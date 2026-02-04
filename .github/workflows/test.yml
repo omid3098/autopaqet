@@ -1,0 +1,105 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  powershell-tests:
+    name: PowerShell Tests (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -Force -Scope CurrentUser -MinimumVersion 5.0
+
+      - name: Run Pester Tests
+        shell: pwsh
+        run: |
+          $config = New-PesterConfiguration
+          $config.Run.Path = "./tests/powershell"
+          $config.Output.Verbosity = "Detailed"
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputPath = "test-results.xml"
+          $config.TestResult.OutputFormat = "NUnitXml"
+          Invoke-Pester -Configuration $config
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: powershell-test-results
+          path: test-results.xml
+
+  bash-tests:
+    name: Bash Tests (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install bats-core
+        run: |
+          git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
+          cd /tmp/bats-core
+          sudo ./install.sh /usr/local
+
+      - name: Run Bats Tests
+        run: |
+          bats tests/bash/*.bats --formatter tap > test-results.tap || true
+          bats tests/bash/*.bats
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bash-test-results
+          path: test-results.tap
+
+  lint-powershell:
+    name: PowerShell Lint
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer -Path ./lib/powershell -Recurse -ReportSummary
+          $results | Format-Table -AutoSize
+          if ($results | Where-Object { $_.Severity -eq 'Error' }) {
+            exit 1
+          }
+
+  lint-bash:
+    name: Bash Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck
+        run: |
+          shellcheck lib/bash/*.sh || true
+          shellcheck autopaqet-server.sh || true

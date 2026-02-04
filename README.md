@@ -26,6 +26,45 @@ $env:AUTOPAQET_SERVER="YOUR_SERVER_IP:9999"; $env:AUTOPAQET_KEY="YOUR_SECRET_KEY
 
 ---
 
+## Interactive Mode
+
+Both scripts support an interactive menu when run directly (not piped).
+
+### Client Menu (Windows)
+
+Run the script directly to access the menu:
+
+```powershell
+.\autopaqet-client.ps1
+```
+
+**Menu Options:**
+- Fresh Install
+- Update AutoPaqet (download latest scripts)
+- Update Paqet (git pull + rebuild)
+- Uninstall
+- Configuration (view/edit server, key, network)
+- Diagnostics (test connection, view logs, network info)
+
+### Server Menu (Linux)
+
+Run the script directly to access the menu:
+
+```bash
+sudo bash autopaqet-server.sh
+```
+
+**Menu Options:**
+- Fresh Install
+- Update AutoPaqet (download latest scripts)
+- Update Paqet (git pull + rebuild)
+- Uninstall
+- Service Management (start, stop, restart, enable, disable)
+- Configuration (view/edit port, key, config file)
+- View Logs
+
+---
+
 ## Detailed Installation
 
 ### Server Setup (Linux)
@@ -56,6 +95,7 @@ The client script (`autopaqet-client.ps1`) performs the following:
 - Clones and builds the `paqet.exe` binary
 - Auto-detects network configuration
 - Generates `client.yaml` configuration
+- Creates desktop and Start Menu shortcuts
 - Launches the client
 
 **Installation Directory:** `%USERPROFILE%\autopaqet`
@@ -63,7 +103,7 @@ The client script (`autopaqet-client.ps1`) performs the following:
 **Environment Variables:**
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `AUTOPAQET_SERVER` | Server address (IP:PORT) | `127.0.0.1:9999` |
+| `AUTOPAQET_SERVER` | Server address (IP:PORT) | *(required)* |
 | `AUTOPAQET_KEY` | Secret key (must match server) | Auto-generated |
 
 **Requirements:**
@@ -144,3 +184,89 @@ irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-uninstal
 Or search for "Uninstall AutoPaqet" in the Start Menu.
 
 This removes the installation folder and shortcuts. Dependencies (Git, Go, GCC, Npcap) are not removed.
+
+### Server (Linux)
+
+Run the uninstall script:
+```bash
+curl -fsSL https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-uninstall.sh | sudo bash
+```
+
+Or locally:
+```bash
+sudo bash autopaqet-uninstall.sh
+```
+
+This removes:
+- Systemd service (stopped and disabled)
+- Binary (`/usr/local/bin/autopaqet`)
+- Configuration (`/etc/autopaqet/`)
+- Source directory (`/opt/autopaqet/`)
+
+**Note:** iptables rules and Go installation are NOT removed automatically. The script provides instructions to remove them manually if needed.
+
+---
+
+## Development
+
+### Project Structure
+
+```
+paqet_installer/
+├── autopaqet-client.ps1      # Windows client (bundled)
+├── autopaqet-server.sh       # Linux server (bundled)
+├── autopaqet-uninstall.ps1   # Windows uninstaller
+├── autopaqet-uninstall.sh    # Linux uninstaller
+├── gates.ps1                 # Quality gates runner
+├── build.ps1                 # Build validation script
+├── lib/
+│   ├── powershell/           # PowerShell modules (for testing)
+│   │   ├── AutoPaqet.Validate.ps1
+│   │   ├── AutoPaqet.Config.ps1
+│   │   ├── AutoPaqet.Menu.ps1
+│   │   ├── AutoPaqet.Network.ps1
+│   │   ├── AutoPaqet.Install.ps1
+│   │   └── AutoPaqet.Logging.ps1
+│   └── bash/                 # Bash modules (for testing)
+│       ├── validate.sh
+│       ├── config.sh
+│       ├── menu.sh
+│       ├── service.sh
+│       └── install.sh
+├── tests/
+│   ├── powershell/           # Pester tests
+│   │   ├── Validate.Tests.ps1
+│   │   └── Config.Tests.ps1
+│   └── bash/                 # Bats tests
+│       └── validate.bats
+└── .github/
+    └── workflows/
+        └── test.yml          # CI workflow
+```
+
+### Running Tests
+
+Run all quality gates:
+```powershell
+.\gates.ps1
+```
+
+This executes:
+1. PowerShell syntax check (all `.ps1` files)
+2. Pester unit tests
+3. Bash syntax check (requires Git Bash or WSL)
+4. Bats tests (requires WSL with bats-core)
+5. Critical files existence check
+
+### Architecture Notes
+
+- **Root scripts** are self-contained "bundled" versions with all functions inline for one-liner use
+- **lib/ modules** contain the same functions in modular form for testing
+- **Tests** use the lib/ modules via dot-sourcing
+- Scripts detect if running interactively (menu mode) or piped (direct install)
+
+---
+
+## License
+
+MIT License - See [paqet](https://github.com/hanselime/paqet) for the main project license.
