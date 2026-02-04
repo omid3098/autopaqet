@@ -43,7 +43,12 @@ function Initialize-Logging {
     Set-Content -Path $script:LogFile -Value "" -Encoding UTF8
     if ($EnableTranscript) {
         $script:TranscriptPath = Join-Path $LogDirectory "setup-transcript.log"
-        Start-Transcript -Path $script:TranscriptPath -Force | Out-Null
+        try {
+            Start-Transcript -Path $script:TranscriptPath -Force | Out-Null
+        } catch {
+            # Transcript may fail in certain contexts (e.g., already running) - non-critical
+            $script:TranscriptPath = $null
+        }
     }
     $script:LoggingInitialized = $true
     Write-Log "========== AUTOPAQET CLIENT LOG ==========" -Level "INFO"

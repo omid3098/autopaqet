@@ -220,12 +220,13 @@ function Invoke-CloneRepository {
 
     # Add safe directory config
     $safeDir = $DestinationDir.Replace('\', '/')
-    git config --global --add safe.directory "$safeDir" 2>&1 | Out-Null
 
     # Temporarily allow stderr output from git (it writes progress to stderr)
     $oldErrorAction = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
+        git config --global --add safe.directory "$safeDir" 2>&1 | Out-Null
+
         if (-not (Test-Path $DestinationDir)) {
             # Fresh clone
             $output = git clone --depth 1 $script:RepoUrl "$DestinationDir" 2>&1
