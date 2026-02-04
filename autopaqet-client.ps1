@@ -13,6 +13,7 @@
 #>
 
 $ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $RepoUrl = "https://github.com/hanselime/paqet.git"
 
 # -----------------------------------------------------------------------------
