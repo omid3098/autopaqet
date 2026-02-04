@@ -222,19 +222,26 @@ function Invoke-CloneRepository {
     $safeDir = $DestinationDir.Replace('\', '/')
     git config --global --add safe.directory "$safeDir" 2>&1 | Out-Null
 
-    if (-not (Test-Path $DestinationDir)) {
-        # Fresh clone
-        $output = git clone --depth 1 $script:RepoUrl "$DestinationDir" 2>&1
-        return ($LASTEXITCODE -eq 0)
-    } else {
-        # Update existing
-        Push-Location $DestinationDir
-        try {
-            $output = git pull 2>&1
+    # Temporarily allow stderr output from git (it writes progress to stderr)
+    $oldErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        if (-not (Test-Path $DestinationDir)) {
+            # Fresh clone
+            $output = git clone --depth 1 $script:RepoUrl "$DestinationDir" 2>&1
             return ($LASTEXITCODE -eq 0)
-        } finally {
-            Pop-Location
+        } else {
+            # Update existing
+            Push-Location $DestinationDir
+            try {
+                $output = git pull 2>&1
+                return ($LASTEXITCODE -eq 0)
+            } finally {
+                Pop-Location
+            }
         }
+    } finally {
+        $ErrorActionPreference = $oldErrorAction
     }
 }
 

@@ -252,15 +252,22 @@ function Invoke-CloneOrUpdateRepo {
     $safeDir = $script:SrcDir.Replace('\', '/')
     git config --global --add safe.directory "$safeDir" 2>&1 | Out-Null
 
-    if (-not (Test-Path $script:SrcDir)) {
-        Write-Info "Cloning AutoPaqet repository..."
-        $output = git clone --depth 1 $script:RepoUrl "$($script:SrcDir)" 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "Failed to clone repository." }
-    } else {
-        Write-Info "Updating AutoPaqet repository..."
-        Push-Location $script:SrcDir
-        git pull 2>&1 | Out-Null
-        Pop-Location
+    # Temporarily allow stderr output from git (it writes progress to stderr)
+    $oldErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        if (-not (Test-Path $script:SrcDir)) {
+            Write-Info "Cloning AutoPaqet repository..."
+            $output = git clone --depth 1 $script:RepoUrl "$($script:SrcDir)" 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "Failed to clone repository." }
+        } else {
+            Write-Info "Updating AutoPaqet repository..."
+            Push-Location $script:SrcDir
+            git pull 2>&1 | Out-Null
+            Pop-Location
+        }
+    } finally {
+        $ErrorActionPreference = $oldErrorAction
     }
 }
 
