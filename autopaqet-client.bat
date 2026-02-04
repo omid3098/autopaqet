@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableDelayedExpansion
-title Paqet Client Installer Launcher
+title AutoPaqet Client
 cd /d "%~dp0"
 
 :: ============================================================================
@@ -13,7 +13,7 @@ if %errorLevel% neq 0 (
     echo                 ADMINISTRATOR REQUIRED
     echo   ========================================================
     echo.
-    echo   This installer requires Administrator privileges.
+    echo   This script requires Administrator privileges.
     echo   Requesting elevation...
     echo.
 
@@ -26,13 +26,13 @@ if %errorLevel% neq 0 (
 )
 
 :: ============================================================================
-:: STEP 2: LAUNCH POWERSHELL INSTALLER
+:: STEP 2: LAUNCH POWERSHELL SCRIPT
 :: ============================================================================
 echo.
-echo   Launching PowerShell Installer...
+echo   Launching PowerShell Script...
 echo.
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-paqet-client.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0autopaqet-client.ps1"
 
 if %errorLevel% neq 0 (
     echo.

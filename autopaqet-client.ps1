@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
-    Paqet Client Installer and Launcher for Windows.
+    AutoPaqet Client for Windows.
 .DESCRIPTION
-    Downloads, builds, configures, and launches the Paqet client.
+    Downloads, builds, configures, and launches the AutoPaqet client.
     Requires: Administrator privileges, Go, Git, GCC (MinGW), and Npcap.
 #>
 
@@ -16,7 +16,7 @@ $WorkDir = $PSScriptRoot
 $RequirementsDir = Join-Path $WorkDir "requirements"
 if (-not (Test-Path $RequirementsDir)) { New-Item -ItemType Directory -Path $RequirementsDir | Out-Null }
 
-$LogFile = Join-Path $RequirementsDir "install.log"
+$LogFile = Join-Path $RequirementsDir "setup.log"
 
 # Overwrite log file for each run
 Set-Content -Path $LogFile -Value "" -Encoding UTF8
@@ -63,7 +63,7 @@ function Invoke-LoggedCommand {
 }
 
 # Start transcript as safety net
-$transcriptPath = Join-Path $RequirementsDir "install-transcript.log"
+$transcriptPath = Join-Path $RequirementsDir "setup-transcript.log"
 Start-Transcript -Path $transcriptPath -Force | Out-Null
 
 # Colors (also log to file)
@@ -86,17 +86,17 @@ function Write-Error {
     param($msg)
     Write-Host "[ERROR] $msg" -ForegroundColor Red
     Write-Log $msg -Level "ERROR"
-    Write-Log "Installation failed. See log for details." -Level "ERROR"
+    Write-Log "Setup failed. See log for details." -Level "ERROR"
     Stop-Transcript | Out-Null
     Write-Host ""
-    Write-Host "If installation failed, please send this file:" -ForegroundColor Yellow
+    Write-Host "If setup failed, please send this file:" -ForegroundColor Yellow
     Write-Host "  $LogFile" -ForegroundColor White
     exit 1
 }
 
 # Log system information header
-Write-Log "========== PAQET CLIENT INSTALLER LOG ==========" -Level "INFO"
-Write-Log "Installation started" -Level "INFO"
+Write-Log "========== AUTOPAQET CLIENT LOG ==========" -Level "INFO"
+Write-Log "Setup started" -Level "INFO"
 Write-Log "Hostname: $env:COMPUTERNAME" -Level "INFO"
 Write-Log "Username: $env:USERNAME" -Level "INFO"
 Write-Log "Windows Version: $([System.Environment]::OSVersion.VersionString)" -Level "INFO"
@@ -121,12 +121,12 @@ if (-not $isAdmin) {
 
 Write-Host @"
 =============================================
-      PAQET CLIENT INSTALLER (WINDOWS)
+        AUTOPAQET CLIENT (WINDOWS)
 =============================================
 "@ -ForegroundColor Cyan
 
 # -----------------------------------------------------------------------------
-# 2. Requirement Detection & Installation
+# 2. Requirement Detection & Setup
 # -----------------------------------------------------------------------------
 Write-Info "Checking system requirements..."
 Write-Log "Requirements directory: $RequirementsDir" -Level "DEBUG"
@@ -135,20 +135,20 @@ $Dependencies = @{
     "Git" = @{
         "Check" = { Get-Command "git" -ErrorAction SilentlyContinue }
         "URL"   = "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe"
-        "File"  = "Git-Installer.exe"
+        "File"  = "Git-Setup.exe"
         "Args"  = "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"
     }
     "Go" = @{
         "Check" = { Get-Command "go" -ErrorAction SilentlyContinue }
         "URL"   = "https://go.dev/dl/go1.23.4.windows-amd64.msi"
-        "File"  = "Go-Installer.msi"
+        "File"  = "Go-Setup.msi"
         "Args"  = "/quiet /norestart"
         "MSI"   = $true
     }
     "GCC" = @{
         "Check" = { Get-Command "gcc" -ErrorAction SilentlyContinue }
         "URL"   = "https://github.com/jmeubank/tdm-gcc/releases/download/v10.3.0-tdm64-2/tdm64-gcc-10.3.0-2.exe"
-        "File"  = "GCC-Installer.exe"
+        "File"  = "GCC-Setup.exe"
         "Args"  = "/S /D=C:\TDM-GCC-64"
     }
 }
@@ -164,7 +164,7 @@ foreach ($depName in $Dependencies.Keys) {
     } else {
         Write-Log "$depName not found in PATH" -Level "WARN"
         Write-Warn "$depName is missing."
-        $choice = Read-Host "Download and install $depName? [Y/n]"
+        $choice = Read-Host "Download and set up $depName? [Y/n]"
         if ($choice -eq '' -or $choice -eq 'y' -or $choice -eq 'Y') {
             $dest = Join-Path $RequirementsDir $dep.File
             if (-not (Test-Path $dest)) {
@@ -179,39 +179,39 @@ foreach ($depName in $Dependencies.Keys) {
                     Write-Error "Failed to download $depName"
                 }
             } else {
-                Write-Log "Using cached installer: $dest" -Level "DEBUG"
+                Write-Log "Using cached file: $dest" -Level "DEBUG"
             }
-            Write-Info "Installing $depName..."
-            Write-Log "Installer args: $($dep.Args)" -Level "DEBUG"
+            Write-Info "Setting up $depName..."
+            Write-Log "Setup args: $($dep.Args)" -Level "DEBUG"
             if ($dep.MSI) {
                 $proc = Start-Process msiexec.exe -ArgumentList "/i `"$dest`" $($dep.Args)" -Wait -PassThru
             } else {
                 $proc = Start-Process $dest -ArgumentList $dep.Args -Wait -PassThru
             }
-            Write-Log "Installer exit code: $($proc.ExitCode)" -Level "DEBUG"
-            Write-Success "$depName installed. You may need to restart the terminal if it's not detected immediately."
+            Write-Log "Setup exit code: $($proc.ExitCode)" -Level "DEBUG"
+            Write-Success "$depName ready. You may need to restart the terminal if it's not detected immediately."
         } else {
-            Write-Log "User declined to install $depName" -Level "WARN"
+            Write-Log "User declined to set up $depName" -Level "WARN"
         }
     }
 }
 
-# Check Npcap (Manual installation usually preferred for the specific options)
-Write-Log "Checking Npcap installation" -Level "DEBUG"
+# Check Npcap (Manual setup usually preferred for the specific options)
+Write-Log "Checking Npcap" -Level "DEBUG"
 $npcapPath32 = "$env:SystemRoot\System32\Npcap\wpcap.dll"
 $npcapPath64 = "$env:SystemRoot\SysWOW64\Npcap\wpcap.dll"
 $npcapInstalled = (Test-Path $npcapPath32) -or (Test-Path $npcapPath64)
 Write-Log "Npcap check paths: $npcapPath32, $npcapPath64" -Level "DEBUG"
-Write-Log "Npcap installed: $npcapInstalled" -Level "DEBUG"
+Write-Log "Npcap present: $npcapInstalled" -Level "DEBUG"
 
 if ($npcapInstalled) {
     Write-Success "Npcap detected."
 } else {
     Write-Warn "Npcap is missing."
-    $choice = Read-Host "Download and install Npcap? [Y/n]"
+    $choice = Read-Host "Download and set up Npcap? [Y/n]"
     if ($choice -eq '' -or $choice -eq 'y' -or $choice -eq 'Y') {
         $url = "https://npcap.com/dist/npcap-1.80.exe"
-        $dest = Join-Path $RequirementsDir "npcap-installer.exe"
+        $dest = Join-Path $RequirementsDir "npcap-setup.exe"
         if (-not (Test-Path $dest)) {
             Write-Info "Downloading Npcap..."
             Write-Log "Download URL: $url" -Level "DEBUG"
@@ -224,40 +224,40 @@ if ($npcapInstalled) {
                 Write-Error "Failed to download Npcap"
             }
         } else {
-            Write-Log "Using cached Npcap installer: $dest" -Level "DEBUG"
+            Write-Log "Using cached Npcap file: $dest" -Level "DEBUG"
         }
-        Write-Warn "IMPORTANT: Check 'Install Npcap in WinPcap API-compatible Mode' during installation."
-        Read-Host "Press Enter to start Npcap installer..."
+        Write-Warn "IMPORTANT: Check 'Install Npcap in WinPcap API-compatible Mode' during setup."
+        Read-Host "Press Enter to start Npcap setup..."
         $proc = Start-Process $dest -Wait -PassThru
-        Write-Log "Npcap installer exit code: $($proc.ExitCode)" -Level "DEBUG"
-        Write-Success "Npcap installation finished."
+        Write-Log "Npcap setup exit code: $($proc.ExitCode)" -Level "DEBUG"
+        Write-Success "Npcap setup finished."
     } else {
-        Write-Log "User declined to install Npcap" -Level "WARN"
+        Write-Log "User declined to set up Npcap" -Level "WARN"
     }
 }
 
 # -----------------------------------------------------------------------------
 # 3. Clone and Build
 # -----------------------------------------------------------------------------
-$srcDir = Join-Path $RequirementsDir "paqet"
-$exePath = Join-Path $RequirementsDir "paqet.exe"
+$srcDir = Join-Path $RequirementsDir "autopaqet"
+$exePath = Join-Path $RequirementsDir "autopaqet.exe"
 
 Write-Log "Source directory: $srcDir" -Level "DEBUG"
 Write-Log "Binary path: $exePath" -Level "DEBUG"
 Write-Log "Repository URL: $RepoUrl" -Level "DEBUG"
 
 if (-not (Test-Path $srcDir)) {
-    Write-Info "Cloning Paqet repository..."
+    Write-Info "Cloning AutoPaqet repository..."
     Write-Log "Adding safe.directory: $($srcDir.Replace('\', '/'))" -Level "DEBUG"
     $safeDir = $srcDir.Replace('\', '/')
     $output = Invoke-LoggedCommand "git config --global --add safe.directory `"$safeDir`"" "Add safe directory to git config"
 
     Write-Log "Starting git clone..." -Level "DEBUG"
-    $output = Invoke-LoggedCommand "git clone --depth 1 $RepoUrl `"$srcDir`"" "Clone paqet repository"
+    $output = Invoke-LoggedCommand "git clone --depth 1 $RepoUrl `"$srcDir`"" "Clone AutoPaqet repository"
     if ($LASTEXITCODE -ne 0) { Write-Error "Failed to clone repository." }
     Write-Log "Clone completed successfully" -Level "SUCCESS"
 } else {
-    Write-Info "Updating Paqet repository..."
+    Write-Info "Updating AutoPaqet repository..."
     Write-Log "Source directory already exists, pulling updates" -Level "DEBUG"
     $safeDir = $srcDir.Replace('\', '/')
     $output = Invoke-LoggedCommand "git config --global --add safe.directory `"$safeDir`"" "Add safe directory to git config"
@@ -269,7 +269,7 @@ if (-not (Test-Path $srcDir)) {
 }
 
 if (-not (Test-Path $exePath)) {
-    Write-Info "Building Paqet binary..."
+    Write-Info "Building AutoPaqet binary..."
     Push-Location $srcDir
     $env:CGO_ENABLED = "1"
     Write-Log "CGO_ENABLED set to 1" -Level "DEBUG"
@@ -282,7 +282,7 @@ if (-not (Test-Path $exePath)) {
 
     if ($buildExitCode -ne 0) {
         Pop-Location
-        Write-Error "Build failed. Check GCC/Go installation."
+        Write-Error "Build failed. Check GCC/Go setup."
     }
     Pop-Location
     Write-Success "Build complete: $exePath"
@@ -346,7 +346,7 @@ if ([string]::IsNullOrEmpty($gatewayMAC)) {
     Write-Error "Could not detect Gateway MAC address."
 }
 
-# Format GUID for paqet config (Windows Npcap style)
+# Format GUID for AutoPaqet config (Windows Npcap style)
 $npcapGuid = "\Device\NPF_$netGuid"
 
 Write-Log "Network detection complete" -Level "SUCCESS"
@@ -439,20 +439,15 @@ transport:
 # -----------------------------------------------------------------------------
 # 6. Launch
 # -----------------------------------------------------------------------------
-Write-Log "Installation and setup complete" -Level "SUCCESS"
-Write-Host "`n[READY] Installation and Setup Complete." -ForegroundColor Green
+Write-Log "Setup complete" -Level "SUCCESS"
+Write-Host "`n[READY] Setup Complete." -ForegroundColor Green
 
 Write-Host ""
 Write-Host "Log file location:" -ForegroundColor Yellow
 Write-Host "  $LogFile" -ForegroundColor White
 
-$choice = Read-Host "Do you want to start the Paqet Client now? [Y/n]"
-if ($choice -eq '' -or $choice -eq 'y' -or $choice -eq 'Y') {
-    Write-Info "Starting Paqet..."
-    Write-Log "Launching Paqet client: $exePath run -c $configFile" -Level "COMMAND"
-    Stop-Transcript | Out-Null
-    & $exePath run -c $configFile
-} else {
-    Write-Log "User chose not to start Paqet client" -Level "INFO"
-    Stop-Transcript | Out-Null
-}
+Write-Host ""
+Write-Info "Starting AutoPaqet Client..."
+Write-Log "Launching AutoPaqet client: $exePath run -c $configFile" -Level "COMMAND"
+Stop-Transcript | Out-Null
+& $exePath run -c $configFile
