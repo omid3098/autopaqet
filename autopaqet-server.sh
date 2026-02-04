@@ -157,6 +157,11 @@ do_fresh_install() {
     CGO_ENABLED=1 go build -v -a -trimpath \
         -ldflags "-s -w -X 'paqet/cmd/version.GitCommit=${git_commit}' -X 'paqet/cmd/version.BuildTime=${build_time}'" \
         -o autopaqet ./cmd/main.go 2>/dev/null
+
+    # Stop existing service before copying binary (prevents "Text file busy" error)
+    if systemctl is-active --quiet ${SERVICE_NAME} 2>/dev/null; then
+        systemctl stop ${SERVICE_NAME}
+    fi
     cp autopaqet "$BINARY_PATH"
     chmod +x "$BINARY_PATH"
     success "Binary built: $BINARY_PATH"
