@@ -184,6 +184,92 @@ transport:
     }
 }
 
+Describe "TCP Local Flag Configuration" {
+    BeforeEach {
+        $script:TestConfigPath = Join-Path $script:TestDir "tcp-flag-test-$(Get-Random).yaml"
+        $content = @"
+network:
+  interface: "Ethernet"
+  tcp:
+    local_flag: ["S"]
+    remote_flag: ["PA"]
+  ipv4:
+    router_mac: "aa:bb:cc:dd:ee:ff"
+"@
+        Set-Content -Path $script:TestConfigPath -Value $content
+    }
+
+    It "extracts local_flag value S" {
+        $content = Get-Content $script:TestConfigPath -Raw
+        $currentFlag = if ($content -match 'local_flag:\s*\["([^"]+)"\]') { $Matches[1] } else { $null }
+        $currentFlag | Should -Be "S"
+    }
+
+    It "extracts local_flag value PA" {
+        $content = @"
+network:
+  tcp:
+    local_flag: ["PA"]
+"@
+        Set-Content -Path $script:TestConfigPath -Value $content
+        $content = Get-Content $script:TestConfigPath -Raw
+        $currentFlag = if ($content -match 'local_flag:\s*\["([^"]+)"\]') { $Matches[1] } else { $null }
+        $currentFlag | Should -Be "PA"
+    }
+
+    It "updates local_flag from S to PA" {
+        $content = Get-Content $script:TestConfigPath -Raw
+        $content = $content -replace '(local_flag:\s*\[")[^"]+("\])', '$1PA$2'
+        Set-Content -Path $script:TestConfigPath -Value $content -Encoding Ascii -NoNewline
+
+        $newContent = Get-Content $script:TestConfigPath -Raw
+        $newContent | Should -Match 'local_flag:\s*\["PA"\]'
+    }
+
+    It "updates local_flag from S to A" {
+        $content = Get-Content $script:TestConfigPath -Raw
+        $content = $content -replace '(local_flag:\s*\[")[^"]+("\])', '$1A$2'
+        Set-Content -Path $script:TestConfigPath -Value $content -Encoding Ascii -NoNewline
+
+        $newContent = Get-Content $script:TestConfigPath -Raw
+        $newContent | Should -Match 'local_flag:\s*\["A"\]'
+    }
+
+    It "updates local_flag from PA to S" {
+        # First set to PA
+        $content = Get-Content $script:TestConfigPath -Raw
+        $content = $content -replace '(local_flag:\s*\[")[^"]+("\])', '$1PA$2'
+        Set-Content -Path $script:TestConfigPath -Value $content -Encoding Ascii -NoNewline
+
+        # Now update to S
+        $content = Get-Content $script:TestConfigPath -Raw
+        $content = $content -replace '(local_flag:\s*\[")[^"]+("\])', '$1S$2'
+        Set-Content -Path $script:TestConfigPath -Value $content -Encoding Ascii -NoNewline
+
+        $newContent = Get-Content $script:TestConfigPath -Raw
+        $newContent | Should -Match 'local_flag:\s*\["S"\]'
+    }
+
+    It "preserves remote_flag when updating local_flag" {
+        $content = Get-Content $script:TestConfigPath -Raw
+        $content = $content -replace '(local_flag:\s*\[")[^"]+("\])', '$1PA$2'
+        Set-Content -Path $script:TestConfigPath -Value $content -Encoding Ascii -NoNewline
+
+        $newContent = Get-Content $script:TestConfigPath -Raw
+        $newContent | Should -Match 'remote_flag:\s*\["PA"\]'
+    }
+
+    It "preserves other config values when updating local_flag" {
+        $content = Get-Content $script:TestConfigPath -Raw
+        $content = $content -replace '(local_flag:\s*\[")[^"]+("\])', '$1A$2'
+        Set-Content -Path $script:TestConfigPath -Value $content -Encoding Ascii -NoNewline
+
+        $newContent = Get-Content $script:TestConfigPath -Raw
+        $newContent | Should -Match 'interface:\s*"Ethernet"'
+        $newContent | Should -Match 'router_mac:\s*"aa:bb:cc:dd:ee:ff"'
+    }
+}
+
 Describe "Get-ConfigurationSummary" {
     BeforeAll {
         $script:TestConfigPath = Join-Path $script:TestDir "summary-test.yaml"

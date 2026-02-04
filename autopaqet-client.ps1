@@ -532,7 +532,7 @@ function Invoke-Uninstall {
 }
 
 function Show-ConfigurationMenu {
-    $options = @("View Current Configuration", "Edit Server Address", "Edit Secret Key", "Re-detect Network")
+    $options = @("View Current Configuration", "Edit Server Address", "Edit Secret Key", "Edit TCP Local Flag", "Re-detect Network")
 
     while ($true) {
         $choice = Show-SubMenu -Title "CONFIGURATION" -Options $options
@@ -580,6 +580,34 @@ function Show-ConfigurationMenu {
                 Wait-ForKeypress
             }
             4 {
+                if (-not (Test-Path $script:ConfigFile)) {
+                    Write-Host "`nNo configuration file found. Run Fresh Install first." -ForegroundColor Yellow
+                } else {
+                    $content = Get-Content $script:ConfigFile -Raw
+                    $currentFlag = if ($content -match 'local_flag:\s*\["([^"]+)"\]') { $Matches[1] } else { "unknown" }
+
+                    Write-Host "`nCurrent TCP Local Flag: [$currentFlag]" -ForegroundColor Cyan
+                    Write-Host ""
+                    Write-Host "  [1] S   - SYN (connection setup)" -ForegroundColor White
+                    Write-Host "  [2] PA  - PSH+ACK (standard data)" -ForegroundColor White
+                    Write-Host "  [3] A   - ACK (acknowledgment)" -ForegroundColor White
+                    Write-Host ""
+                    Write-Host "  [0] Cancel" -ForegroundColor Yellow
+
+                    $flagChoice = Read-Host "`nSelect option"
+                    $newFlag = switch ($flagChoice) { "1" { "S" } "2" { "PA" } "3" { "A" } default { $null } }
+
+                    if ($newFlag) {
+                        $content = $content -replace '(local_flag:\s*\[")[^"]+("\])', "`$1$newFlag`$2"
+                        Set-Content -Path $script:ConfigFile -Value $content -Encoding Ascii -NoNewline
+                        Write-Success "TCP local_flag updated to: [$newFlag]"
+                    } elseif ($flagChoice -ne "0") {
+                        Write-Host "[ERROR] Invalid selection." -ForegroundColor Red
+                    }
+                }
+                Wait-ForKeypress
+            }
+            5 {
                 Write-Info "Re-detecting network configuration..."
                 try {
                     $networkConfig = Get-NetworkConfiguration

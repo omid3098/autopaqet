@@ -545,6 +545,43 @@ do_config_edit_key() {
     read -p "Press Enter to continue..."
 }
 
+do_config_edit_local_flag() {
+    echo ""
+    local current_flag="unknown"
+    if [[ -f "$CONFIG_PATH" ]]; then
+        current_flag=$(grep "local_flag:" "$CONFIG_PATH" | sed 's/.*\["\([^"]*\)"\].*/\1/')
+    fi
+
+    echo -e "${CYAN}Current TCP Local Flag: [${current_flag}]${NC}"
+    echo ""
+    echo "  [1] S   - SYN (connection setup)"
+    echo "  [2] PA  - PSH+ACK (standard data)"
+    echo "  [3] A   - ACK (acknowledgment)"
+    echo ""
+    echo -e "  ${YELLOW}[0] Cancel${NC}"
+    echo ""
+    read -p "Select option: " flag_choice
+
+    local new_flag=""
+    case $flag_choice in
+        1) new_flag="S" ;;
+        2) new_flag="PA" ;;
+        3) new_flag="A" ;;
+        0) return ;;
+        *) error "Invalid selection"; sleep 1; return ;;
+    esac
+
+    if [[ -f "$CONFIG_PATH" ]]; then
+        sed -i "s/\(local_flag:\s*\[\"\)[^\"]*/\1${new_flag}/" "$CONFIG_PATH"
+        success "TCP local_flag updated to: [${new_flag}]"
+        warn "Restart service for changes to take effect: sudo systemctl restart autopaqet"
+    else
+        error "Configuration file not found"
+    fi
+    echo ""
+    read -p "Press Enter to continue..."
+}
+
 do_config_edit_file() {
     if [[ -f "$CONFIG_PATH" ]]; then
         nano "$CONFIG_PATH"
@@ -614,7 +651,8 @@ show_config_menu() {
     echo "  [1] View Current Configuration"
     echo "  [2] Edit Server Port"
     echo "  [3] Edit Secret Key"
-    echo "  [4] Edit Config (nano)"
+    echo "  [4] Edit TCP Local Flag"
+    echo "  [5] Edit Config (nano)"
     echo ""
     echo -e "  ${YELLOW}[0] Back${NC}"
     echo ""
@@ -646,7 +684,8 @@ run_config_menu() {
             1) do_config_view ;;
             2) do_config_edit_port ;;
             3) do_config_edit_key ;;
-            4) do_config_edit_file ;;
+            4) do_config_edit_local_flag ;;
+            5) do_config_edit_file ;;
             *) echo -e "${RED}Invalid option${NC}"; sleep 1 ;;
         esac
     done
