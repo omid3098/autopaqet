@@ -48,9 +48,16 @@ Run the script directly to access the menu:
 
 ### Server Menu (Linux)
 
-Run the script directly to access the menu:
+After installation, use the management command:
 
 ```bash
+sudo autopaqet-manage
+```
+
+Or download and run the script directly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-server.sh -o autopaqet-server.sh
 sudo bash autopaqet-server.sh
 ```
 
@@ -145,6 +152,9 @@ sudo bash autopaqet-server.sh
 ### Server (Linux)
 
 ```bash
+# Open management menu (update, uninstall, config, etc.)
+sudo autopaqet-manage
+
 # Check service status
 systemctl status autopaqet
 
@@ -187,14 +197,15 @@ This removes the installation folder and shortcuts. Dependencies (Git, Go, GCC, 
 
 ### Server (Linux)
 
-Run the uninstall script:
+Use the management menu:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-uninstall.sh | sudo bash
+sudo autopaqet-manage
+# Select option 4: Uninstall
 ```
 
-Or locally:
+Or run the uninstall script directly:
 ```bash
-sudo bash autopaqet-uninstall.sh
+curl -fsSL https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-uninstall.sh | sudo bash
 ```
 
 This removes:

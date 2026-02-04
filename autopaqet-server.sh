@@ -241,8 +241,32 @@ EOF
         error "Service failed to start. Check: journalctl -u ${SERVICE_NAME}"
     fi
 
+    # Save management script for later use
+    save_management_script
+
     # Show completion info
     show_install_complete
+}
+
+save_management_script() {
+    info "Saving management script..."
+    local script_url="${AUTOPAQET_SCRIPTS_REPO}/autopaqet-server.sh"
+    local script_path="/usr/local/bin/autopaqet-manage"
+
+    # Download latest script
+    if wget -q "$script_url" -O "$script_path" 2>/dev/null; then
+        chmod +x "$script_path"
+        success "Management script saved: $script_path"
+    else
+        # Fallback: if we can read ourselves, copy
+        if [[ -f "${BASH_SOURCE[0]}" ]]; then
+            cp "${BASH_SOURCE[0]}" "$script_path"
+            chmod +x "$script_path"
+            success "Management script saved: $script_path"
+        else
+            warn "Could not save management script"
+        fi
+    fi
 }
 
 show_install_complete() {
@@ -256,7 +280,10 @@ show_install_complete() {
     echo "  Server Address:  ${SERVER_IP}:${AUTOPAQET_PORT}"
     echo "  Secret Key:      ${SECRET_KEY}"
     echo ""
-    echo -e "${YELLOW}USEFUL COMMANDS:${NC}"
+    echo -e "${YELLOW}MANAGEMENT:${NC}"
+    echo "  Menu:     sudo autopaqet-manage"
+    echo ""
+    echo -e "${YELLOW}QUICK COMMANDS:${NC}"
     echo "  Status:   systemctl status ${SERVICE_NAME}"
     echo "  Logs:     journalctl -u ${SERVICE_NAME} -f"
     echo "  Restart:  systemctl restart ${SERVICE_NAME}"
