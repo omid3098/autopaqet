@@ -4,14 +4,48 @@
 .DESCRIPTION
     Downloads, builds, configures, and launches the AutoPaqet client.
     Requires: Administrator privileges, Go, Git, GCC (MinGW), and Npcap.
+
+    One-liner installation:
+        irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex
+
+    With server configuration:
+        $env:AUTOPAQET_SERVER="1.2.3.4:9999"; $env:AUTOPAQET_KEY="your-key"; irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex
 #>
 
 $ErrorActionPreference = "Stop"
 $RepoUrl = "https://github.com/hanselime/paqet.git"
-$WorkDir = $PSScriptRoot
 
 # -----------------------------------------------------------------------------
-# 0. Logging Infrastructure
+# 0. Self-Elevation (for one-liner support)
+# -----------------------------------------------------------------------------
+$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+$isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdmin) {
+    Write-Host "[WARN] Administrator privileges required. Requesting elevation..." -ForegroundColor Yellow
+
+    # Save environment variables to pass to elevated process
+    $envParams = ""
+    if ($env:AUTOPAQET_SERVER) { $envParams += "`$env:AUTOPAQET_SERVER='$env:AUTOPAQET_SERVER'; " }
+    if ($env:AUTOPAQET_KEY) { $envParams += "`$env:AUTOPAQET_KEY='$env:AUTOPAQET_KEY'; " }
+
+    # Download script and run elevated
+    $scriptUrl = "https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1"
+    $elevatedCmd = "${envParams}irm '$scriptUrl' | iex"
+
+    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $elevatedCmd
+    exit
+}
+
+# -----------------------------------------------------------------------------
+# 0.1 Working Directory Setup (supports one-liner installation)
+# -----------------------------------------------------------------------------
+# Use fixed installation directory instead of $PSScriptRoot (which is empty when piped)
+$WorkDir = Join-Path $env:USERPROFILE "autopaqet"
+if (-not (Test-Path $WorkDir)) { New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null }
+
+# -----------------------------------------------------------------------------
+# 0.2 Logging Infrastructure
 # -----------------------------------------------------------------------------
 $RequirementsDir = Join-Path $WorkDir "requirements"
 if (-not (Test-Path $RequirementsDir)) { New-Item -ItemType Directory -Path $RequirementsDir | Out-Null }
@@ -105,19 +139,11 @@ Write-Log "PowerShell Version: $($PSVersionTable.PSVersion)" -Level "INFO"
 Write-Log "Working Directory: $WorkDir" -Level "INFO"
 Write-Log "PATH: $env:PATH" -Level "DEBUG"
 
-$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-$isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 Write-Log "Running as Administrator: $isAdmin" -Level "INFO"
 
 # -----------------------------------------------------------------------------
-# 1. Privileges Check
+# 1. Privileges Check (already elevated at this point)
 # -----------------------------------------------------------------------------
-if (-not $isAdmin) {
-    Write-Warn "Administrator privileges are required to configure network adapters and capture packets."
-    Write-Warn "Please right-click this script and select 'Run as Administrator'."
-    Stop-Transcript | Out-Null
-    exit 1
-}
 
 Write-Host @"
 =============================================
@@ -153,6 +179,8 @@ $Dependencies = @{
     }
 }
 
+$isInteractive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
+
 foreach ($depName in $Dependencies.Keys) {
     $dep = $Dependencies[$depName]
     Write-Log "Checking dependency: $depName" -Level "DEBUG"
@@ -164,8 +192,17 @@ foreach ($depName in $Dependencies.Keys) {
     } else {
         Write-Log "$depName not found in PATH" -Level "WARN"
         Write-Warn "$depName is missing."
-        $choice = Read-Host "Download and set up $depName? [Y/n]"
-        if ($choice -eq '' -or $choice -eq 'y' -or $choice -eq 'Y') {
+
+        # Auto-install in non-interactive mode, or prompt in interactive mode
+        $shouldInstall = $true
+        if ($isInteractive) {
+            $choice = Read-Host "Download and set up $depName? [Y/n]"
+            $shouldInstall = ($choice -eq '' -or $choice -eq 'y' -or $choice -eq 'Y')
+        } else {
+            Write-Info "Auto-installing $depName (non-interactive mode)..."
+        }
+
+        if ($shouldInstall) {
             $dest = Join-Path $RequirementsDir $dep.File
             if (-not (Test-Path $dest)) {
                 Write-Info "Downloading $depName..."
@@ -208,8 +245,17 @@ if ($npcapInstalled) {
     Write-Success "Npcap detected."
 } else {
     Write-Warn "Npcap is missing."
-    $choice = Read-Host "Download and set up Npcap? [Y/n]"
-    if ($choice -eq '' -or $choice -eq 'y' -or $choice -eq 'Y') {
+
+    # Auto-install in non-interactive mode, or prompt in interactive mode
+    $shouldInstall = $true
+    if ($isInteractive) {
+        $choice = Read-Host "Download and set up Npcap? [Y/n]"
+        $shouldInstall = ($choice -eq '' -or $choice -eq 'y' -or $choice -eq 'Y')
+    } else {
+        Write-Info "Auto-installing Npcap (non-interactive mode)..."
+    }
+
+    if ($shouldInstall) {
         $url = "https://npcap.com/dist/npcap-1.80.exe"
         $dest = Join-Path $RequirementsDir "npcap-setup.exe"
         if (-not (Test-Path $dest)) {
@@ -226,9 +272,16 @@ if ($npcapInstalled) {
         } else {
             Write-Log "Using cached Npcap file: $dest" -Level "DEBUG"
         }
-        Write-Warn "IMPORTANT: Check 'Install Npcap in WinPcap API-compatible Mode' during setup."
-        Read-Host "Press Enter to start Npcap setup..."
-        $proc = Start-Process $dest -Wait -PassThru
+
+        if ($isInteractive) {
+            Write-Warn "IMPORTANT: Check 'Install Npcap in WinPcap API-compatible Mode' during setup."
+            Read-Host "Press Enter to start Npcap setup..."
+            $proc = Start-Process $dest -Wait -PassThru
+        } else {
+            # Silent install with WinPcap compatibility mode
+            Write-Info "Installing Npcap silently with WinPcap API-compatible mode..."
+            $proc = Start-Process $dest -ArgumentList "/S /winpcap_mode=yes" -Wait -PassThru
+        }
         Write-Log "Npcap setup exit code: $($proc.ExitCode)" -Level "DEBUG"
         Write-Success "Npcap setup finished."
     } else {
@@ -373,11 +426,27 @@ if (-not (Test-Path $configFile)) {
     Write-Host "`n[SETUP] New Configuration Required" -ForegroundColor Yellow
     Write-Log "Configuration file not found, creating new one" -Level "INFO"
 
-    $serverInput = Read-Host "Enter Server Address (IP:PORT) [Default: 127.0.0.1:9999]"
-    if ([string]::IsNullOrWhiteSpace($serverInput)) { $serverInput = "127.0.0.1:9999" }
+    # Use environment variable if set, otherwise prompt (or use default for non-interactive)
+    $serverInput = $env:AUTOPAQET_SERVER
+    if ([string]::IsNullOrWhiteSpace($serverInput)) {
+        # Check if running interactively
+        $isInteractive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
+        if ($isInteractive) {
+            $serverInput = Read-Host "Enter Server Address (IP:PORT) [Default: 127.0.0.1:9999]"
+        }
+        if ([string]::IsNullOrWhiteSpace($serverInput)) { $serverInput = "127.0.0.1:9999" }
+    }
     Write-Log "Server address: $serverInput" -Level "INFO"
+    Write-Info "Server address: $serverInput"
 
-    $keyInput = Read-Host "Enter Secret Key (Must match server) [Default: Auto-Generated]"
+    # Use environment variable if set, otherwise prompt (or auto-generate for non-interactive)
+    $keyInput = $env:AUTOPAQET_KEY
+    if ([string]::IsNullOrWhiteSpace($keyInput)) {
+        $isInteractive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
+        if ($isInteractive) {
+            $keyInput = Read-Host "Enter Secret Key (Must match server) [Default: Auto-Generated]"
+        }
+    }
     if ([string]::IsNullOrWhiteSpace($keyInput)) {
         Write-Info "Generating a new key. Ensure you update the SERVER with this key!"
         Write-Log "Generating new secret key" -Level "DEBUG"

@@ -1,90 +1,134 @@
 # AutoPaqet
 
-This directory contains automated setup scripts for the [AutoPaqet](https://github.com/hanselime/paqet) project.
+Automated setup scripts for the [paqet](https://github.com/hanselime/paqet) project.
 
-## 1. AutoPaqet Client (Windows)
+## Quick Install
 
-Two options are available for Windows:
+### Server (Linux/Ubuntu)
 
-### Option A: Batch Script (`autopaqet-client.bat`) - Recommended
-
-A user-friendly batch script with visual progress bar and automatic dependency setup.
-
-#### Features
-*   **Right-click to Run:** Simply right-click and select "Run as administrator"
-*   **Visual Progress Bar:** Shows progress with step-by-step status
-*   **Automatic Downloads:** Downloads and sets up Git, Go, GCC, and Npcap automatically
-*   **Interactive Prompts:** Asks before setting up each component
-*   **Cached Downloads:** Downloads are saved to `requirements/` folder for reuse
-*   **Network Auto-Detection:** Automatically configures network settings
-*   **Configuration Wizard:** Generates ready-to-use `client.yaml`
-
-#### Usage
-1.  **Right-click** `autopaqet-client.bat`
-2.  Select **"Run as administrator"**
-3.  Follow the on-screen prompts
-
-#### Directory Structure After Setup
+```bash
+curl -fsSL https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-server.sh | sudo bash
 ```
-autopaqet/
-├── requirements/          # Downloaded files (cached)
-│   ├── Git-*.exe
-│   ├── go*.msi
-│   ├── tdm64-gcc-*.exe
-│   └── npcap-*.exe
-├── autopaqet/             # Cloned source code
-├── autopaqet.exe          # Built binary
-└── client.yaml            # Generated configuration
+
+### Client (Windows)
+
+Run in PowerShell (as Administrator):
+
+```powershell
+irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex
+```
+
+Or with pre-configured server settings:
+
+```powershell
+$env:AUTOPAQET_SERVER="YOUR_SERVER_IP:9999"; $env:AUTOPAQET_KEY="YOUR_SECRET_KEY"; irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex
 ```
 
 ---
 
-### Option B: PowerShell Script (`autopaqet-client.ps1`)
+## Detailed Installation
 
-A PowerShell script for advanced users who prefer manual dependency setup.
+### Server Setup (Linux)
 
-#### Features
-*   **Dependency Check:** Verifies Git, Go, GCC (MinGW), and Npcap are present
-*   **Build Automation:** Clones the repository and compiles the `autopaqet.exe` binary
-*   **Network Auto-Detection:** Automatically detects network configuration
-*   **Configuration Wizard:** Generates ready-to-use `client.yaml`
+The server script (`autopaqet-server.sh`) performs the following:
 
-#### Usage
-1.  Set up dependencies manually: Git, Go, TDM-GCC, Npcap
-2.  Open **PowerShell** as **Administrator**
-3.  Navigate to this directory
-4.  Run the script:
-    ```powershell
-    .\autopaqet-client.ps1
-    ```
+- Updates system packages
+- Installs Go, build tools, and `libpcap-dev`
+- Configures firewall (UFW) and iptables rules
+- Clones and builds the `paqet` binary
+- Creates and starts a `systemd` service
+- Auto-detects network settings and generates `server.yaml`
 
----
+After installation, the script outputs the client configuration parameters (server address, secret key) needed for Windows client setup.
 
-### Windows Requirements
-*   Windows 10/11 or Server
-*   Administrator privileges
-*   Internet connection (for cloning and fetching dependencies)
+**Requirements:**
+- Ubuntu/Debian-based Linux
+- Root privileges
 
 ---
 
-## 2. AutoPaqet Server (Linux)
+### Client Setup (Windows)
 
-A Bash script (`autopaqet-server.sh`) to set up the AutoPaqet Server on Linux (Ubuntu/Debian).
+The client script (`autopaqet-client.ps1`) performs the following:
 
-### Features
-*   **System Update:** Updates `apt` packages.
-*   **Dependency Setup:** Sets up Go, build tools, `libpcap-dev`, etc.
-*   **Firewall Configuration:** Configures `ufw` and raw `iptables` rules to bypass connection tracking (essential for AutoPaqet).
-*   **Build Automation:** Clones and builds the `autopaqet` binary.
-*   **Service Management:** Creates and starts a `systemd` service (`autopaqet.service`).
-*   **Config Generation:** Auto-detects network settings and generates `server.yaml`.
+- Auto-elevates to Administrator (needed for getting network configuration)
+- Downloads and installs dependencies (Git, Go, GCC, Npcap)
+- Clones and builds the `paqet.exe` binary
+- Auto-detects network configuration
+- Generates `client.yaml` configuration
+- Launches the client
 
-### Usage
-Run as root:
+**Installation Directory:** `%USERPROFILE%\autopaqet`
+
+**Environment Variables:**
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AUTOPAQET_SERVER` | Server address (IP:PORT) | `127.0.0.1:9999` |
+| `AUTOPAQET_KEY` | Secret key (must match server) | Auto-generated |
+
+**Requirements:**
+- Windows 10/11 or Server
+- Internet connection
+
+**Directory Structure After Setup:**
+```
+%USERPROFILE%\autopaqet\
+├── requirements\
+│   ├── autopaqet\          # Cloned source code
+│   ├── autopaqet.exe       # Built binary
+│   ├── client.yaml         # Generated configuration
+│   ├── setup.log           # Installation log
+│   └── *.exe / *.msi       # Cached installers
+```
+
+---
+
+### Alternative: Local Script Execution
+
+If you prefer to run the scripts locally:
+
+**Windows (Batch):**
+1. Right-click `autopaqet-client.bat`
+2. Select "Run as administrator"
+
+**Windows (PowerShell):**
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+.\autopaqet-client.ps1
+```
+
+**Linux:**
 ```bash
 sudo bash autopaqet-server.sh
 ```
 
-### Requirements
-*   Ubuntu/Debian-based Linux distribution.
-*   Root privileges.
+---
+
+## Useful Commands
+
+### Server (Linux)
+
+```bash
+# Check service status
+systemctl status autopaqet
+
+# View logs
+journalctl -u autopaqet -f
+
+# Restart service
+systemctl restart autopaqet
+
+# Stop service
+systemctl stop autopaqet
+```
+
+### Client (Windows)
+
+```powershell
+# Re-run setup (from installation directory)
+cd $env:USERPROFILE\autopaqet\requirements
+.\autopaqet.exe run -c client.yaml
+
+# View configuration
+notepad $env:USERPROFILE\autopaqet\requirements\client.yaml
+```
