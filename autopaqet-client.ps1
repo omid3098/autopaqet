@@ -250,12 +250,13 @@ function Install-Dependency {
 
 function Invoke-CloneOrUpdateRepo {
     $safeDir = $script:SrcDir.Replace('\', '/')
-    git config --global --add safe.directory "$safeDir" 2>&1 | Out-Null
 
     # Temporarily allow stderr output from git (it writes progress to stderr)
     $oldErrorAction = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
+        git config --global --add safe.directory "$safeDir" 2>&1 | Out-Null
+
         if (-not (Test-Path $script:SrcDir)) {
             Write-Info "Cloning AutoPaqet repository..."
             $output = git clone --depth 1 $script:RepoUrl "$($script:SrcDir)" 2>&1
