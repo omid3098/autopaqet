@@ -34,7 +34,7 @@ if (-not $isAdmin) {
     $scriptUrl = "https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1"
     $elevatedCmd = "${envParams}irm '$scriptUrl' | iex"
 
-    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $elevatedCmd
+    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $elevatedCmd
     exit
 }
 
