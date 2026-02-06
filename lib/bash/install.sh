@@ -56,7 +56,7 @@ install_packages() {
 # Construct the download URL for a paqet binary
 # Usage: url=$(get_binary_download_url "amd64" "v1.0.0")
 get_binary_download_url() {
-    local arch="${1:-$(detect_arch)}"
+    local arch="${1-$(detect_arch)}"
     local tag="${2:-$RELEASE_TAG}"
 
     if [[ -z "$arch" ]]; then
@@ -71,7 +71,7 @@ get_binary_download_url() {
 # Usage: download_binary "/usr/local/bin/autopaqet" "amd64" "v1.0.0"
 download_binary() {
     local output="${1:-$BINARY_PATH}"
-    local arch="${2:-$(detect_arch)}"
+    local arch="${2-$(detect_arch)}"
     local tag="${3:-$RELEASE_TAG}"
     local force="${4:-false}"
 
