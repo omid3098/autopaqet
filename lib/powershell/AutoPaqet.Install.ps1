@@ -275,11 +275,15 @@ function Invoke-BuildBinary {
     }
 
     Push-Location $SourceDir
+    # Temporarily allow stderr output from go (it writes download progress to stderr)
+    $oldErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     try {
         $env:CGO_ENABLED = "1"
         $buildOutput = go build -ldflags "-s -w" -trimpath -o "$OutputPath" ./cmd/main.go 2>&1
         return ($LASTEXITCODE -eq 0)
     } finally {
+        $ErrorActionPreference = $oldErrorAction
         Pop-Location
     }
 }

@@ -412,13 +412,19 @@ function Invoke-BuildBinary {
 
     Write-Info "Building AutoPaqet binary..."
     Push-Location $script:SrcDir
-    $env:CGO_ENABLED = "1"
-    $buildOutput = go build -ldflags "-s -w" -trimpath -o "$($script:ExePath)" ./cmd/main.go 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    # Temporarily allow stderr output from go (it writes download progress to stderr)
+    $oldErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $env:CGO_ENABLED = "1"
+        $buildOutput = go build -ldflags "-s -w" -trimpath -o "$($script:ExePath)" ./cmd/main.go 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "Build failed. Check GCC/Go setup."
+        }
+    } finally {
+        $ErrorActionPreference = $oldErrorAction
         Pop-Location
-        throw "Build failed. Check GCC/Go setup."
     }
-    Pop-Location
     Write-Success "Build complete: $($script:ExePath)"
 }
 
