@@ -1,0 +1,231 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+      paqet_commit:
+        description: 'Paqet repo commit hash (leave empty to use PAQET_VERSION file)'
+        required: false
+        type: string
+
+env:
+  PAQET_REPO: "https://github.com/hanselime/paqet.git"
+
+jobs:
+  resolve-version:
+    name: Resolve Version Info
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      paqet_commit: ${{ steps.commit.outputs.paqet_commit }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Resolve version tag
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve paqet commit
+        id: commit
+        run: |
+          if [[ -n "${{ inputs.paqet_commit }}" ]]; then
+            echo "paqet_commit=${{ inputs.paqet_commit }}" >> "$GITHUB_OUTPUT"
+          elif [[ -f PAQET_VERSION ]]; then
+            commit=$(grep '^COMMIT=' PAQET_VERSION | cut -d'=' -f2)
+            echo "paqet_commit=${commit}" >> "$GITHUB_OUTPUT"
+          else
+            echo "paqet_commit=HEAD" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-windows:
+    name: Build Windows (amd64)
+    runs-on: windows-latest
+    needs: resolve-version
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.4'
+
+      - name: Install TDM-GCC
+        shell: pwsh
+        run: |
+          $url = "https://github.com/jmeubank/tdm-gcc/releases/download/v10.3.0-tdm64-2/tdm64-gcc-10.3.0-2.exe"
+          Invoke-WebRequest -Uri $url -OutFile gcc-setup.exe -UseBasicParsing
+          Start-Process ./gcc-setup.exe -ArgumentList "/S /D=C:\TDM-GCC-64" -Wait
+          echo "C:\TDM-GCC-64\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - name: Install Npcap SDK
+        shell: pwsh
+        run: |
+          $sdkUrl = "https://npcap.com/dist/npcap-sdk-1.13.zip"
+          Invoke-WebRequest -Uri $sdkUrl -OutFile npcap-sdk.zip -UseBasicParsing
+          Expand-Archive -Path npcap-sdk.zip -DestinationPath C:\npcap-sdk
+          echo "C:\npcap-sdk\Lib\x64" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - name: Clone Paqet
+        shell: bash
+        run: |
+          git clone "${{ env.PAQET_REPO }}" paqet-src
+          cd paqet-src
+          COMMIT="${{ needs.resolve-version.outputs.paqet_commit }}"
+          if [[ "$COMMIT" != "HEAD" ]]; then
+            git checkout "$COMMIT"
+          fi
+
+      - name: Build binary
+        shell: pwsh
+        env:
+          CGO_ENABLED: "1"
+          CGO_CFLAGS: "-IC:\\npcap-sdk\\Include"
+          CGO_LDFLAGS: "-LC:\\npcap-sdk\\Lib\\x64"
+        run: |
+          cd paqet-src
+          $commit = git rev-parse HEAD
+          $buildTime = (Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+          go build -ldflags "-s -w -X 'paqet/cmd/version.GitCommit=$commit' -X 'paqet/cmd/version.BuildTime=$buildTime'" -trimpath -o ../paqet-windows-amd64.exe ./cmd/main.go
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: paqet-windows-amd64
+          path: paqet-windows-amd64.exe
+
+  build-linux-amd64:
+    name: Build Linux (amd64)
+    runs-on: ubuntu-latest
+    needs: resolve-version
+    steps:
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev build-essential
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.5'
+
+      - name: Clone Paqet
+        run: |
+          git clone "${{ env.PAQET_REPO }}" paqet-src
+          cd paqet-src
+          COMMIT="${{ needs.resolve-version.outputs.paqet_commit }}"
+          if [[ "$COMMIT" != "HEAD" ]]; then
+            git checkout "$COMMIT"
+          fi
+
+      - name: Build binary
+        run: |
+          cd paqet-src
+          GIT_COMMIT=$(git rev-parse HEAD)
+          BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          CGO_ENABLED=1 go build -v -a -trimpath \
+            -ldflags "-s -w -X 'paqet/cmd/version.GitCommit=${GIT_COMMIT}' -X 'paqet/cmd/version.BuildTime=${BUILD_TIME}'" \
+            -o ../paqet-linux-amd64 ./cmd/main.go
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: paqet-linux-amd64
+          path: paqet-linux-amd64
+
+  build-linux-arm64:
+    name: Build Linux (arm64)
+    runs-on: ubuntu-latest
+    needs: resolve-version
+    steps:
+      - name: Install cross-compilation toolchain
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list.d/*.list || true
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main restricted universe multiverse" | sudo tee /etc/apt/sources.list.d/arm64.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs)-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64.list
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libpcap-dev:arm64
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.5'
+
+      - name: Clone Paqet
+        run: |
+          git clone "${{ env.PAQET_REPO }}" paqet-src
+          cd paqet-src
+          COMMIT="${{ needs.resolve-version.outputs.paqet_commit }}"
+          if [[ "$COMMIT" != "HEAD" ]]; then
+            git checkout "$COMMIT"
+          fi
+
+      - name: Build binary
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CC: aarch64-linux-gnu-gcc
+          CGO_ENABLED: "1"
+        run: |
+          cd paqet-src
+          GIT_COMMIT=$(git rev-parse HEAD)
+          BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          go build -v -a -trimpath \
+            -ldflags "-s -w -X 'paqet/cmd/version.GitCommit=${GIT_COMMIT}' -X 'paqet/cmd/version.BuildTime=${BUILD_TIME}'" \
+            -o ../paqet-linux-arm64 ./cmd/main.go
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: paqet-linux-arm64
+          path: paqet-linux-arm64
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [resolve-version, build-windows, build-linux-amd64, build-linux-arm64]
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve-version.outputs.version }}
+          name: AutoPaqet ${{ needs.resolve-version.outputs.version }}
+          body: |
+            ## AutoPaqet ${{ needs.resolve-version.outputs.version }}
+
+            Pre-built Paqet binaries for all supported platforms.
+
+            ### Downloads
+            | Platform | Architecture | File |
+            |----------|-------------|------|
+            | Windows | amd64 | `paqet-windows-amd64.exe` |
+            | Linux | amd64 | `paqet-linux-amd64` |
+            | Linux | arm64 | `paqet-linux-arm64` |
+
+            ### Installation
+            **Windows:** `irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex`
+            **Linux:** `curl -fsSL https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-server.sh | sudo bash`
+
+            Built from paqet commit: `${{ needs.resolve-version.outputs.paqet_commit }}`
+          files: |
+            artifacts/paqet-windows-amd64/paqet-windows-amd64.exe
+            artifacts/paqet-linux-amd64/paqet-linux-amd64
+            artifacts/paqet-linux-arm64/paqet-linux-arm64
+          draft: false
+          prerelease: false

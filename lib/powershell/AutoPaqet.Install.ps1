@@ -1,36 +1,36 @@
 # AutoPaqet Installation Functions
-# Windows-specific dependency installation and build logic
+# Windows-specific dependency installation and binary download logic
 
 # Configuration constants
-$script:RepoUrl = "https://github.com/hanselime/paqet.git"
 $script:AutoPaqetRepoUrl = "https://raw.githubusercontent.com/omid3098/autopaqet/main"
-
-$script:Dependencies = @{
-    "Git" = @{
-        "Check" = { Get-Command "git" -ErrorAction SilentlyContinue }
-        "URL"   = "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe"
-        "File"  = "Git-Setup.exe"
-        "Args"  = "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"
-    }
-    "Go" = @{
-        "Check" = { Get-Command "go" -ErrorAction SilentlyContinue }
-        "URL"   = "https://go.dev/dl/go1.23.4.windows-amd64.msi"
-        "File"  = "Go-Setup.msi"
-        "Args"  = "/quiet /norestart"
-        "MSI"   = $true
-    }
-    "GCC" = @{
-        "Check" = { Get-Command "gcc" -ErrorAction SilentlyContinue }
-        "URL"   = "https://github.com/jmeubank/tdm-gcc/releases/download/v10.3.0-tdm64-2/tdm64-gcc-10.3.0-2.exe"
-        "File"  = "GCC-Setup.exe"
-        "Args"  = "/S /D=C:\TDM-GCC-64"
-    }
-}
+$script:ReleaseBaseUrl = "https://github.com/omid3098/autopaqet/releases/download"
+$script:ReleaseTag = "v1.0.0"
 
 $script:NpcapConfig = @{
     "URL"  = "https://npcap.com/dist/npcap-1.80.exe"
     "File" = "npcap-setup.exe"
     "SilentArgs" = "/S /winpcap_mode=yes"
+}
+
+function Get-BinaryDownloadUrl {
+    <#
+    .SYNOPSIS
+        Constructs the GitHub Release download URL for the paqet binary.
+    .PARAMETER ReleaseTag
+        The release tag (e.g., v1.0.0)
+    .PARAMETER Platform
+        The platform identifier (e.g., windows-amd64)
+    .OUTPUTS
+        The download URL string
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$ReleaseTag = $script:ReleaseTag,
+        [string]$Platform = "windows-amd64"
+    )
+
+    $extension = if ($Platform -like "windows*") { ".exe" } else { "" }
+    return "$($script:ReleaseBaseUrl)/$ReleaseTag/paqet-${Platform}${extension}"
 }
 
 function Get-MissingDependencies {
@@ -45,15 +45,7 @@ function Get-MissingDependencies {
 
     $missing = @()
 
-    foreach ($depName in $script:Dependencies.Keys) {
-        $dep = $script:Dependencies[$depName]
-        $checkResult = & $dep.Check
-        if (-not $checkResult) {
-            $missing += $depName
-        }
-    }
-
-    # Check Npcap separately
+    # Check Npcap (only runtime dependency needed)
     $npcapPath32 = "$env:SystemRoot\System32\Npcap\wpcap.dll"
     $npcapPath64 = "$env:SystemRoot\SysWOW64\Npcap\wpcap.dll"
     if (-not ((Test-Path $npcapPath32) -or (Test-Path $npcapPath64))) {
@@ -68,7 +60,7 @@ function Install-Dependency {
     .SYNOPSIS
         Installs a specific dependency.
     .PARAMETER Name
-        Name of the dependency (Git, Go, GCC, Npcap)
+        Name of the dependency (Npcap)
     .PARAMETER DownloadDir
         Directory to download installers to
     .PARAMETER Silent
@@ -79,7 +71,7 @@ function Install-Dependency {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet("Git", "Go", "GCC", "Npcap")]
+        [ValidateSet("Npcap")]
         [string]$Name,
 
         [Parameter(Mandatory = $true)]
@@ -88,35 +80,11 @@ function Install-Dependency {
         [bool]$Silent = $false
     )
 
-    # Handle Npcap separately
     if ($Name -eq "Npcap") {
         return Install-Npcap -DownloadDir $DownloadDir -Silent $Silent
     }
 
-    $dep = $script:Dependencies[$Name]
-    if (-not $dep) {
-        return $false
-    }
-
-    $dest = Join-Path $DownloadDir $dep.File
-
-    # Download if not cached
-    if (-not (Test-Path $dest)) {
-        try {
-            Invoke-WebRequest -Uri $dep.URL -OutFile $dest -UseBasicParsing
-        } catch {
-            return $false
-        }
-    }
-
-    # Install
-    if ($dep.MSI) {
-        $proc = Start-Process msiexec.exe -ArgumentList "/i `"$dest`" $($dep.Args)" -Wait -PassThru
-    } else {
-        $proc = Start-Process $dest -ArgumentList $dep.Args -Wait -PassThru
-    }
-
-    return ($proc.ExitCode -eq 0)
+    return $false
 }
 
 function Install-Npcap {
@@ -203,69 +171,25 @@ function Install-AllDependencies {
     return $results
 }
 
-function Invoke-CloneRepository {
+function Get-PaqetBinary {
     <#
     .SYNOPSIS
-        Clones or updates the paqet repository.
-    .PARAMETER DestinationDir
-        Directory to clone into
-    .OUTPUTS
-        Boolean indicating success
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$DestinationDir
-    )
-
-    # Add safe directory config
-    $safeDir = $DestinationDir.Replace('\', '/')
-
-    # Temporarily allow stderr output from git (it writes progress to stderr)
-    $oldErrorAction = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        git config --global --add safe.directory "$safeDir" 2>&1 | Out-Null
-
-        if (-not (Test-Path $DestinationDir)) {
-            # Fresh clone
-            $output = git clone --depth 1 $script:RepoUrl "$DestinationDir" 2>&1
-            return ($LASTEXITCODE -eq 0)
-        } else {
-            # Update existing
-            Push-Location $DestinationDir
-            try {
-                $output = git pull 2>&1
-                return ($LASTEXITCODE -eq 0)
-            } finally {
-                Pop-Location
-            }
-        }
-    } finally {
-        $ErrorActionPreference = $oldErrorAction
-    }
-}
-
-function Invoke-BuildBinary {
-    <#
-    .SYNOPSIS
-        Builds the paqet binary.
-    .PARAMETER SourceDir
-        Directory containing the source code
+        Downloads the pre-built paqet binary from GitHub Releases.
     .PARAMETER OutputPath
-        Path for the output binary
+        Path to save the binary to
+    .PARAMETER ReleaseTag
+        The release tag to download (e.g., v1.0.0)
     .PARAMETER Force
-        If true, rebuild even if binary exists
+        If true, re-download even if binary exists
     .OUTPUTS
         Boolean indicating success
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$SourceDir,
-
         [Parameter(Mandatory = $true)]
         [string]$OutputPath,
+
+        [string]$ReleaseTag = $script:ReleaseTag,
 
         [switch]$Force
     )
@@ -274,17 +198,17 @@ function Invoke-BuildBinary {
         return $true  # Binary already exists
     }
 
-    Push-Location $SourceDir
-    # Temporarily allow stderr output from go (it writes download progress to stderr)
-    $oldErrorAction = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
+    $url = Get-BinaryDownloadUrl -ReleaseTag $ReleaseTag -Platform "windows-amd64"
+
     try {
-        $env:CGO_ENABLED = "1"
-        $buildOutput = go build -ldflags "-s -w" -trimpath -o "$OutputPath" ./cmd/main.go 2>&1
-        return ($LASTEXITCODE -eq 0)
-    } finally {
-        $ErrorActionPreference = $oldErrorAction
-        Pop-Location
+        $parentDir = Split-Path $OutputPath -Parent
+        if (-not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Invoke-WebRequest -Uri $url -OutFile $OutputPath -UseBasicParsing
+        return (Test-Path $OutputPath)
+    } catch {
+        return $false
     }
 }
 
@@ -492,12 +416,12 @@ function Request-AdminElevation {
 # Export functions (only when loaded as a module)
 if ($MyInvocation.MyCommand.ScriptBlock.Module) {
     Export-ModuleMember -Function @(
+        'Get-BinaryDownloadUrl',
         'Get-MissingDependencies',
         'Install-Dependency',
         'Install-Npcap',
         'Install-AllDependencies',
-        'Invoke-CloneRepository',
-        'Invoke-BuildBinary',
+        'Get-PaqetBinary',
         'New-DesktopShortcut',
         'New-StartMenuShortcut',
         'New-UninstallShortcut',

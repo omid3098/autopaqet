@@ -1,11 +1,11 @@
 #!/bin/bash
 # AutoPaqet Installation Functions
-# Linux-specific dependency installation and build logic
+# Linux-specific dependency installation and binary download logic
 
 # Configuration
-PAQET_REPO="https://github.com/hanselime/paqet.git"
 AUTOPAQET_REPO="https://raw.githubusercontent.com/omid3098/autopaqet/main"
-GO_VERSION="1.23.5"
+RELEASE_BASE_URL="https://github.com/omid3098/autopaqet/releases/download"
+RELEASE_TAG="v1.0.0"
 INSTALL_DIR="/opt/autopaqet"
 CONFIG_DIR="/etc/autopaqet"
 BINARY_PATH="/usr/local/bin/autopaqet"
@@ -44,92 +44,71 @@ update_system() {
     DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq
 }
 
-# Install required packages
+# Install required packages (runtime only, no build tools)
 # Usage: install_packages
 install_packages() {
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-        git curl wget nano vim htop net-tools unzip zip \
-        software-properties-common build-essential \
-        libpcap-dev iptables-persistent
+        curl wget nano vim htop net-tools unzip zip \
+        software-properties-common \
+        libpcap0.8 iptables-persistent
 }
 
-# Install Go
-# Usage: install_go "1.23.5" "amd64"
-install_go() {
-    local version="${1:-$GO_VERSION}"
-    local arch="${2:-$(detect_arch)}"
+# Construct the download URL for a paqet binary
+# Usage: url=$(get_binary_download_url "amd64" "v1.0.0")
+get_binary_download_url() {
+    local arch="${1:-$(detect_arch)}"
+    local tag="${2:-$RELEASE_TAG}"
 
     if [[ -z "$arch" ]]; then
         return 1
     fi
 
-    local tarball="go${version}.linux-${arch}.tar.gz"
-    local url="https://go.dev/dl/${tarball}"
-
-    wget -q "$url" -O /tmp/go.tar.gz || return 1
-    rm -rf /usr/local/go
-    tar -C /usr/local -xzf /tmp/go.tar.gz || return 1
-    rm /tmp/go.tar.gz
-
-    # Set up PATH
-    export PATH=/usr/local/go/bin:$PATH
-    echo 'export PATH=/usr/local/go/bin:$PATH' > /etc/profile.d/go.sh
-
+    echo "${RELEASE_BASE_URL}/${tag}/paqet-linux-${arch}"
     return 0
 }
 
-# Check if Go is installed
-# Usage: if check_go; then echo "installed"; fi
-check_go() {
-    command -v go &>/dev/null
-}
-
-# Clone or update the repository
-# Usage: clone_repo "/opt/autopaqet"
-clone_repo() {
-    local dest="${1:-$INSTALL_DIR}"
-
-    if [[ -d "$dest" ]]; then
-        # Update existing
-        cd "$dest"
-        git pull
-        return $?
-    else
-        # Fresh clone
-        git clone --depth 1 "$PAQET_REPO" "$dest" 2>/dev/null
-        return $?
-    fi
-}
-
-# Build the binary
-# Usage: build_binary "/opt/autopaqet" "/usr/local/bin/autopaqet"
-build_binary() {
-    local src_dir="${1:-$INSTALL_DIR}"
-    local output="${2:-$BINARY_PATH}"
-    local force="${3:-false}"
+# Download pre-built binary from GitHub Releases
+# Usage: download_binary "/usr/local/bin/autopaqet" "amd64" "v1.0.0"
+download_binary() {
+    local output="${1:-$BINARY_PATH}"
+    local arch="${2:-$(detect_arch)}"
+    local tag="${3:-$RELEASE_TAG}"
+    local force="${4:-false}"
 
     # Skip if binary exists and not forcing
     if [[ -f "$output" && "$force" != "true" ]]; then
         return 0
     fi
 
-    cd "$src_dir" || return 1
-
-    # Get version info
-    local git_commit=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-    local build_time=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
-
-    # Build
-    CGO_ENABLED=1 go build -v -a -trimpath \
-        -ldflags "-s -w -X 'paqet/cmd/version.GitCommit=${git_commit}' -X 'paqet/cmd/version.BuildTime=${build_time}'" \
-        -o "$output" ./cmd/main.go 2>/dev/null
-
-    if [[ $? -eq 0 ]]; then
-        chmod +x "$output"
-        return 0
+    if [[ -z "$arch" ]]; then
+        echo "Error: Unsupported architecture: $(uname -m)" >&2
+        return 1
     fi
 
-    return 1
+    local url
+    url=$(get_binary_download_url "$arch" "$tag")
+    if [[ $? -ne 0 ]]; then
+        echo "Error: Failed to construct download URL" >&2
+        return 1
+    fi
+
+    local dest_dir
+    dest_dir=$(dirname "$output")
+    if [[ ! -d "$dest_dir" ]]; then
+        mkdir -p "$dest_dir" || return 1
+    fi
+
+    if command -v curl &>/dev/null; then
+        curl -fsSL "$url" -o "$output" || return 1
+    elif command -v wget &>/dev/null; then
+        wget -q "$url" -O "$output" || return 1
+    else
+        echo "Error: Neither curl nor wget found" >&2
+        return 1
+    fi
+
+    chmod +x "$output"
+    return 0
 }
 
 # Full installation sequence
@@ -149,32 +128,17 @@ do_full_install() {
     echo "Installing required packages..."
     install_packages || return 1
 
-    echo "Installing Go ${GO_VERSION}..."
-    install_go "$GO_VERSION" "$arch" || return 1
-
-    echo "Cloning repository..."
-    clone_repo "$INSTALL_DIR" || return 1
-
-    echo "Building binary..."
-    build_binary "$INSTALL_DIR" "$BINARY_PATH" || return 1
+    echo "Downloading pre-built binary..."
+    download_binary "$BINARY_PATH" "$arch" "$RELEASE_TAG" || return 1
 
     return 0
 }
 
-# Update paqet (git pull + rebuild)
+# Update paqet (download latest binary)
 # Usage: update_paqet
 update_paqet() {
-    if [[ ! -d "$INSTALL_DIR" ]]; then
-        echo "Error: Installation directory not found" >&2
-        return 1
-    fi
-
-    echo "Pulling latest changes..."
-    cd "$INSTALL_DIR"
-    git pull || return 1
-
-    echo "Rebuilding binary..."
-    build_binary "$INSTALL_DIR" "$BINARY_PATH" "true" || return 1
+    echo "Downloading latest binary..."
+    download_binary "$BINARY_PATH" "$(detect_arch)" "$RELEASE_TAG" "true" || return 1
 
     return 0
 }
@@ -220,7 +184,7 @@ do_uninstall() {
         rm -rf "$CONFIG_DIR"
     fi
 
-    # Remove source
+    # Remove source directory if it exists
     if [[ -d "$INSTALL_DIR" ]]; then
         rm -rf "$INSTALL_DIR"
     fi
@@ -233,12 +197,6 @@ do_uninstall() {
 check_install_status() {
     local status=""
 
-    if [[ -d "$INSTALL_DIR" ]]; then
-        status="${status}Source: Installed ($INSTALL_DIR)\n"
-    else
-        status="${status}Source: Not installed\n"
-    fi
-
     if [[ -f "$BINARY_PATH" ]]; then
         status="${status}Binary: Installed ($BINARY_PATH)\n"
     else
@@ -249,12 +207,6 @@ check_install_status() {
         status="${status}Config: Exists (${CONFIG_DIR}/server.yaml)\n"
     else
         status="${status}Config: Not found\n"
-    fi
-
-    if check_go; then
-        status="${status}Go: Installed ($(go version | awk '{print $3}'))\n"
-    else
-        status="${status}Go: Not installed\n"
     fi
 
     echo -e "$status"

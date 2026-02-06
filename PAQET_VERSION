@@ -1,0 +1,3 @@
+# Paqet repository commit to build against
+# Update this when you want to release a new version
+COMMIT=HEAD

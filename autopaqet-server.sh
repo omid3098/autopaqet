@@ -9,9 +9,9 @@ set -e
 # Configuration
 # =============================================================================
 AUTOPAQET_PORT="${AUTOPAQET_PORT:-9999}"
-AUTOPAQET_REPO="https://github.com/hanselime/paqet.git"
 AUTOPAQET_SCRIPTS_REPO="https://raw.githubusercontent.com/omid3098/autopaqet/main"
-GO_VERSION="1.23.5"
+RELEASE_BASE_URL="https://github.com/omid3098/autopaqet/releases/download"
+RELEASE_TAG="v1.0.0"
 INSTALL_DIR="/opt/autopaqet"
 CONFIG_DIR="/etc/autopaqet"
 CONFIG_PATH="${CONFIG_DIR}/server.yaml"
@@ -114,12 +114,12 @@ do_fresh_install() {
     DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq
     success "System updated"
 
-    # Step 2: Install packages
+    # Step 2: Install packages (runtime only, no build tools)
     info "Installing required packages..."
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-        git curl wget nano vim htop net-tools unzip zip \
-        software-properties-common build-essential \
-        libpcap-dev iptables-persistent
+        curl wget nano vim htop net-tools unzip zip \
+        software-properties-common \
+        libpcap0.8 iptables-persistent
     success "Packages installed"
 
     # Step 3: Configure UFW
@@ -132,39 +132,18 @@ do_fresh_install() {
         warn "UFW not found, skipping"
     fi
 
-    # Step 4: Install Go
-    info "Installing Go ${GO_VERSION}..."
-    local go_tar="go${GO_VERSION}.linux-${arch}.tar.gz"
-    wget -q "https://go.dev/dl/${go_tar}" -O /tmp/go.tar.gz
-    rm -rf /usr/local/go
-    tar -C /usr/local -xzf /tmp/go.tar.gz
-    rm /tmp/go.tar.gz
-    export PATH=/usr/local/go/bin:$PATH
-    echo 'export PATH=/usr/local/go/bin:$PATH' > /etc/profile.d/go.sh
-    success "Go $(go version | awk '{print $3}') installed"
+    # Step 4: Download pre-built binary
+    info "Downloading pre-built binary..."
+    local binary_url="${RELEASE_BASE_URL}/${RELEASE_TAG}/paqet-linux-${arch}"
 
-    # Step 5: Clone repository
-    info "Cloning repository..."
-    rm -rf "$INSTALL_DIR"
-    git clone --depth 1 "$AUTOPAQET_REPO" "$INSTALL_DIR" 2>/dev/null
-    success "Repository cloned"
-
-    # Step 6: Build binary
-    info "Building binary..."
-    cd "$INSTALL_DIR"
-    local git_commit=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-    local build_time=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
-    CGO_ENABLED=1 go build -v -a -trimpath \
-        -ldflags "-s -w -X 'paqet/cmd/version.GitCommit=${git_commit}' -X 'paqet/cmd/version.BuildTime=${build_time}'" \
-        -o autopaqet ./cmd/main.go 2>/dev/null
-
-    # Stop existing service before copying binary (prevents "Text file busy" error)
+    # Stop existing service before replacing binary (prevents "Text file busy" error)
     if systemctl is-active --quiet ${SERVICE_NAME} 2>/dev/null; then
         systemctl stop ${SERVICE_NAME}
     fi
-    cp autopaqet "$BINARY_PATH"
+
+    curl -fsSL "$binary_url" -o "$BINARY_PATH" || error "Failed to download binary from: $binary_url"
     chmod +x "$BINARY_PATH"
-    success "Binary built: $BINARY_PATH"
+    success "Binary downloaded: $BINARY_PATH"
 
     # Step 7: Detect network
     info "Detecting network configuration..."
@@ -334,9 +313,12 @@ do_update_autopaqet() {
 do_update_paqet() {
     check_root || error "This script must be run as root"
 
-    if [[ ! -d "$INSTALL_DIR" ]]; then
+    if [[ ! -f "$BINARY_PATH" ]]; then
         error "Paqet not installed. Run Fresh Install first."
     fi
+
+    local arch=$(detect_arch)
+    [[ -z "$arch" ]] && error "Unsupported architecture: $(uname -m)"
 
     # Stop service
     if systemctl is-active --quiet ${SERVICE_NAME}; then
@@ -344,22 +326,12 @@ do_update_paqet() {
         systemctl stop ${SERVICE_NAME}
     fi
 
-    # Update source
-    info "Pulling latest changes..."
-    cd "$INSTALL_DIR"
-    git pull
-
-    # Rebuild
-    info "Rebuilding binary..."
-    export PATH=/usr/local/go/bin:$PATH
-    local git_commit=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-    local build_time=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
-    CGO_ENABLED=1 go build -v -a -trimpath \
-        -ldflags "-s -w -X 'paqet/cmd/version.GitCommit=${git_commit}' -X 'paqet/cmd/version.BuildTime=${build_time}'" \
-        -o autopaqet ./cmd/main.go 2>/dev/null
-    cp autopaqet "$BINARY_PATH"
+    # Download latest binary
+    info "Downloading latest binary..."
+    local binary_url="${RELEASE_BASE_URL}/${RELEASE_TAG}/paqet-linux-${arch}"
+    curl -fsSL "$binary_url" -o "$BINARY_PATH" || error "Failed to download binary"
     chmod +x "$BINARY_PATH"
-    success "Binary rebuilt"
+    success "Binary updated"
 
     # Restart service
     info "Starting service..."
@@ -427,7 +399,7 @@ do_uninstall() {
 
     success "AutoPaqet uninstalled"
     echo ""
-    echo "Note: iptables rules and Go were NOT removed."
+    echo "Note: iptables rules were NOT removed."
     echo ""
     read -p "Press Enter to continue..."
 }
@@ -620,7 +592,7 @@ show_main_menu() {
     echo ""
     echo "  [1] Fresh Install"
     echo "  [2] Update AutoPaqet (download latest scripts)"
-    echo "  [3] Update Paqet (git pull + rebuild)"
+    echo "  [3] Update Paqet (download latest)"
     echo "  [4] Uninstall"
     echo "  [5] Service Management"
     echo "  [6] Configuration"

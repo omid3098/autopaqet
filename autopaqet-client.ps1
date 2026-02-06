@@ -2,8 +2,8 @@
 .SYNOPSIS
     AutoPaqet Client for Windows.
 .DESCRIPTION
-    Downloads, builds, configures, and launches the AutoPaqet client.
-    Requires: Administrator privileges, Go, Git, GCC (MinGW), and Npcap.
+    Downloads, configures, and launches the AutoPaqet client.
+    Requires: Administrator privileges and Npcap.
 
     One-liner installation:
         irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex
@@ -29,11 +29,11 @@ $ErrorActionPreference = "Stop"
 # =============================================================================
 # Configuration
 # =============================================================================
-$script:RepoUrl = "https://github.com/hanselime/paqet.git"
 $script:AutoPaqetRepoUrl = "https://raw.githubusercontent.com/omid3098/autopaqet/main"
+$script:ReleaseBaseUrl = "https://github.com/omid3098/autopaqet/releases/download"
+$script:ReleaseTag = "v1.0.0"
 $script:WorkDir = Join-Path $env:USERPROFILE "autopaqet"
 $script:RequirementsDir = Join-Path $script:WorkDir "requirements"
-$script:SrcDir = Join-Path $script:RequirementsDir "autopaqet"
 $script:ExePath = Join-Path $script:RequirementsDir "paqet.exe"
 $script:ConfigFile = Join-Path $script:RequirementsDir "client.yaml"
 $script:LogFile = Join-Path $script:RequirementsDir "setup.log"
@@ -292,27 +292,6 @@ function Invoke-RunClient {
 # =============================================================================
 # Dependencies Configuration
 # =============================================================================
-$script:Dependencies = @{
-    "Git" = @{
-        "Check" = { Get-Command "git" -ErrorAction SilentlyContinue }
-        "URL"   = "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe"
-        "File"  = "Git-Setup.exe"
-        "Args"  = "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"
-    }
-    "Go" = @{
-        "Check" = { Get-Command "go" -ErrorAction SilentlyContinue }
-        "URL"   = "https://go.dev/dl/go1.23.4.windows-amd64.msi"
-        "File"  = "Go-Setup.msi"
-        "Args"  = "/quiet /norestart"
-        "MSI"   = $true
-    }
-    "GCC" = @{
-        "Check" = { Get-Command "gcc" -ErrorAction SilentlyContinue }
-        "URL"   = "https://github.com/jmeubank/tdm-gcc/releases/download/v10.3.0-tdm64-2/tdm64-gcc-10.3.0-2.exe"
-        "File"  = "GCC-Setup.exe"
-        "Args"  = "/S /D=C:\TDM-GCC-64"
-    }
-}
 
 # =============================================================================
 # Core Functions
@@ -335,9 +314,6 @@ function Request-AdminElevation {
 
 function Get-MissingDependencies {
     $missing = @()
-    foreach ($depName in $script:Dependencies.Keys) {
-        if (-not (& $script:Dependencies[$depName].Check)) { $missing += $depName }
-    }
     if (-not (Test-NpcapInstalled)) { $missing += "Npcap" }
     return $missing
 }
@@ -363,46 +339,10 @@ function Install-Dependency {
         return ($proc.ExitCode -eq 0)
     }
 
-    $dep = $script:Dependencies[$Name]
-    $dest = Join-Path $DownloadDir $dep.File
-    if (-not (Test-Path $dest)) {
-        Write-Info "Downloading $Name..."
-        Invoke-WebRequest -Uri $dep.URL -OutFile $dest -UseBasicParsing
-    }
-    Write-Info "Installing $Name..."
-    if ($dep.MSI) {
-        $proc = Start-Process msiexec.exe -ArgumentList "/i `"$dest`" $($dep.Args)" -Wait -PassThru
-    } else {
-        $proc = Start-Process $dest -ArgumentList $dep.Args -Wait -PassThru
-    }
-    return ($proc.ExitCode -eq 0)
+    return $false
 }
 
-function Invoke-CloneOrUpdateRepo {
-    $safeDir = $script:SrcDir.Replace('\', '/')
-
-    # Temporarily allow stderr output from git (it writes progress to stderr)
-    $oldErrorAction = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        git config --global --add safe.directory "$safeDir" 2>&1 | Out-Null
-
-        if (-not (Test-Path $script:SrcDir)) {
-            Write-Info "Cloning AutoPaqet repository..."
-            $output = git clone --depth 1 $script:RepoUrl "$($script:SrcDir)" 2>&1
-            if ($LASTEXITCODE -ne 0) { throw "Failed to clone repository." }
-        } else {
-            Write-Info "Updating AutoPaqet repository..."
-            Push-Location $script:SrcDir
-            git pull 2>&1 | Out-Null
-            Pop-Location
-        }
-    } finally {
-        $ErrorActionPreference = $oldErrorAction
-    }
-}
-
-function Invoke-BuildBinary {
+function Get-PaqetBinary {
     param([switch]$Force)
 
     if ((Test-Path $script:ExePath) -and -not $Force) {
@@ -410,22 +350,19 @@ function Invoke-BuildBinary {
         return
     }
 
-    Write-Info "Building AutoPaqet binary..."
-    Push-Location $script:SrcDir
-    # Temporarily allow stderr output from go (it writes download progress to stderr)
-    $oldErrorAction = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        $env:CGO_ENABLED = "1"
-        $buildOutput = go build -ldflags "-s -w" -trimpath -o "$($script:ExePath)" ./cmd/main.go 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "Build failed. Check GCC/Go setup."
-        }
-    } finally {
-        $ErrorActionPreference = $oldErrorAction
-        Pop-Location
+    $url = "$($script:ReleaseBaseUrl)/$($script:ReleaseTag)/paqet-windows-amd64.exe"
+    Write-Info "Downloading AutoPaqet binary..."
+
+    $parentDir = Split-Path $script:ExePath -Parent
+    if (-not (Test-Path $parentDir)) {
+        New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
     }
-    Write-Success "Build complete: $($script:ExePath)"
+
+    Invoke-WebRequest -Uri $url -OutFile $script:ExePath -UseBasicParsing
+    if (-not (Test-Path $script:ExePath)) {
+        throw "Failed to download binary from: $url"
+    }
+    Write-Success "Binary downloaded: $($script:ExePath)"
 }
 
 function New-ClientConfig {
@@ -582,9 +519,8 @@ function Invoke-FreshInstall {
         Write-Success "All dependencies installed."
     }
 
-    # Clone and build
-    Invoke-CloneOrUpdateRepo
-    Invoke-BuildBinary
+    # Download pre-built binary
+    Get-PaqetBinary
 
     # Network detection
     Write-Info "Detecting network configuration..."
@@ -671,8 +607,7 @@ function Invoke-UpdateAutoPaqet {
 function Invoke-UpdatePaqet {
     Write-Info "Updating Paqet..."
     try {
-        Invoke-CloneOrUpdateRepo
-        Invoke-BuildBinary -Force
+        Get-PaqetBinary -Force
         Write-Success "Paqet updated successfully!"
     } catch {
         Write-Host "[ERROR] Update failed: $_" -ForegroundColor Red
@@ -856,7 +791,7 @@ function Show-MainMenuLoop {
             $options += "Diagnostics"
             $actions[$optionIndex++] = "Diagnostics"
 
-            $options += "Update Paqet (git pull + rebuild)"
+            $options += "Update Paqet (download latest)"
             $actions[$optionIndex++] = "UpdatePaqet"
 
             $options += "Update AutoPaqet (download latest installer)"
