@@ -104,7 +104,8 @@ Describe "Get-PaqetBinary" {
         It "returns false when download fails" {
             $binaryPath = Join-Path $script:TestDir "nonexistent-$(Get-Random).exe"
 
-            # The release URL doesn't exist, so download will fail and return $false
+            Mock Invoke-WebRequest { throw "Simulated download failure" }
+
             $result = Get-PaqetBinary -OutputPath $binaryPath
             $result | Should -Be $false
         }
