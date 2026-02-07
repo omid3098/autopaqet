@@ -20,6 +20,7 @@ After=network.target
 
 [Service]
 Type=simple
+ExecStartPre=/usr/local/bin/autopaqet-manage setup-firewall
 ExecStart=${binary} run -c ${config}
 Restart=on-failure
 RestartSec=5

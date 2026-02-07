@@ -96,6 +96,29 @@ detect_network() {
 }
 
 # =============================================================================
+# Firewall Helpers
+# =============================================================================
+
+configure_iptables() {
+    local port="${1:-443}"
+    iptables -t raw -C PREROUTING -p tcp --dport ${port} -j NOTRACK 2>/dev/null || \
+        iptables -t raw -I PREROUTING -p tcp --dport ${port} -j NOTRACK
+    iptables -t raw -C OUTPUT -p tcp --sport ${port} -j NOTRACK 2>/dev/null || \
+        iptables -t raw -I OUTPUT -p tcp --sport ${port} -j NOTRACK
+    iptables -t mangle -C OUTPUT -p tcp --sport ${port} --tcp-flags RST RST -j DROP 2>/dev/null || \
+        iptables -t mangle -I OUTPUT -p tcp --sport ${port} --tcp-flags RST RST -j DROP
+    netfilter-persistent save >/dev/null 2>&1 || iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+}
+
+remove_iptables() {
+    local port="${1:-443}"
+    iptables -t raw -D PREROUTING -p tcp --dport ${port} -j NOTRACK 2>/dev/null || true
+    iptables -t raw -D OUTPUT -p tcp --sport ${port} -j NOTRACK 2>/dev/null || true
+    iptables -t mangle -D OUTPUT -p tcp --sport ${port} --tcp-flags RST RST -j DROP 2>/dev/null || true
+    netfilter-persistent save >/dev/null 2>&1 || iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+}
+
+# =============================================================================
 # Installation Functions
 # =============================================================================
 
@@ -206,13 +229,7 @@ EOF
 
     # Step 10: Configure iptables
     info "Configuring iptables..."
-    iptables -t raw -C PREROUTING -p tcp --dport ${AUTOPAQET_PORT} -j NOTRACK 2>/dev/null || \
-        iptables -t raw -I PREROUTING -p tcp --dport ${AUTOPAQET_PORT} -j NOTRACK
-    iptables -t raw -C OUTPUT -p tcp --sport ${AUTOPAQET_PORT} -j NOTRACK 2>/dev/null || \
-        iptables -t raw -I OUTPUT -p tcp --sport ${AUTOPAQET_PORT} -j NOTRACK
-    iptables -t mangle -C OUTPUT -p tcp --sport ${AUTOPAQET_PORT} --tcp-flags RST RST -j DROP 2>/dev/null || \
-        iptables -t mangle -I OUTPUT -p tcp --sport ${AUTOPAQET_PORT} --tcp-flags RST RST -j DROP
-    netfilter-persistent save >/dev/null 2>&1 || iptables-save > /etc/iptables/rules.v4
+    configure_iptables "${AUTOPAQET_PORT}"
     success "Iptables configured"
 
     # Step 11: Create systemd service
@@ -224,6 +241,7 @@ After=network.target
 
 [Service]
 Type=simple
+ExecStartPre=/usr/local/bin/autopaqet-manage setup-firewall
 ExecStart=/usr/local/bin/autopaqet run -c /etc/autopaqet/server.yaml
 Restart=on-failure
 RestartSec=5
@@ -499,7 +517,11 @@ do_config_view() {
 
 do_config_edit_port() {
     echo ""
-    read -p "Enter new port (current: ${AUTOPAQET_PORT}): " new_port
+    # Read current port from config
+    local old_port
+    old_port=$(grep "^listen:" -A1 "$CONFIG_PATH" | grep addr | sed 's/.*:\([0-9]*\)".*/\1/')
+
+    read -p "Enter new port (current: ${old_port:-$AUTOPAQET_PORT}): " new_port
 
     if [[ ! "$new_port" =~ ^[0-9]+$ ]] || [[ $new_port -lt 1 || $new_port -gt 65535 ]]; then
         error "Invalid port number"
@@ -511,7 +533,28 @@ do_config_edit_port() {
         # Update ipv4 addr port
         sed -i "s/\(addr: \"[0-9.]*:\)[0-9]*\"/\1${new_port}\"/" "$CONFIG_PATH"
         success "Port updated to ${new_port}"
-        warn "Remember to update iptables rules and restart the service!"
+
+        # Update iptables rules for new port
+        info "Updating iptables rules..."
+        [[ -n "$old_port" ]] && remove_iptables "$old_port"
+        configure_iptables "$new_port"
+        success "Iptables updated"
+
+        # Update UFW if available
+        if command -v ufw &>/dev/null; then
+            ufw allow ${new_port}/tcp >/dev/null 2>&1 || true
+        fi
+
+        # Restart service
+        if systemctl is-active --quiet ${SERVICE_NAME}; then
+            info "Restarting service..."
+            systemctl restart ${SERVICE_NAME}
+            if systemctl is-active --quiet ${SERVICE_NAME}; then
+                success "Service restarted"
+            else
+                warn "Service failed to restart. Check: journalctl -u ${SERVICE_NAME}"
+            fi
+        fi
     else
         error "Configuration file not found"
     fi
@@ -538,6 +581,17 @@ do_config_edit_key() {
         if [[ -n "$new_key" ]]; then
             sed -i "s/\(key: \"\)[^\"]*/\1${new_key}/" "$CONFIG_PATH"
             success "Key updated"
+        fi
+    fi
+
+    # Restart service
+    if systemctl is-active --quiet ${SERVICE_NAME}; then
+        info "Restarting service..."
+        systemctl restart ${SERVICE_NAME}
+        if systemctl is-active --quiet ${SERVICE_NAME}; then
+            success "Service restarted"
+        else
+            warn "Service failed to restart. Check: journalctl -u ${SERVICE_NAME}"
         fi
     fi
     echo ""
@@ -573,7 +627,17 @@ do_config_edit_local_flag() {
     if [[ -f "$CONFIG_PATH" ]]; then
         sed -i "s/\(local_flag:\s*\[\"\)[^\"]*/\1${new_flag}/" "$CONFIG_PATH"
         success "TCP local_flag updated to: [${new_flag}]"
-        warn "Restart service for changes to take effect: sudo systemctl restart autopaqet"
+
+        # Restart service
+        if systemctl is-active --quiet ${SERVICE_NAME}; then
+            info "Restarting service..."
+            systemctl restart ${SERVICE_NAME}
+            if systemctl is-active --quiet ${SERVICE_NAME}; then
+                success "Service restarted"
+            else
+                warn "Service failed to restart. Check: journalctl -u ${SERVICE_NAME}"
+            fi
+        fi
     else
         error "Configuration file not found"
     fi
@@ -612,7 +676,17 @@ do_config_edit_kcp_mode() {
     if [[ -f "$CONFIG_PATH" ]]; then
         sed -i "s/\(mode:\s*\"\)[^\"]*/\1${new_mode}/" "$CONFIG_PATH"
         success "KCP mode updated to: [${new_mode}]"
-        warn "Restart service for changes to take effect: sudo systemctl restart autopaqet"
+
+        # Restart service
+        if systemctl is-active --quiet ${SERVICE_NAME}; then
+            info "Restarting service..."
+            systemctl restart ${SERVICE_NAME}
+            if systemctl is-active --quiet ${SERVICE_NAME}; then
+                success "Service restarted"
+            else
+                warn "Service failed to restart. Check: journalctl -u ${SERVICE_NAME}"
+            fi
+        fi
     else
         error "Configuration file not found"
     fi
@@ -623,6 +697,17 @@ do_config_edit_kcp_mode() {
 do_config_edit_file() {
     if [[ -f "$CONFIG_PATH" ]]; then
         nano "$CONFIG_PATH"
+
+        # Restart service after manual edit
+        if systemctl is-active --quiet ${SERVICE_NAME}; then
+            info "Restarting service..."
+            systemctl restart ${SERVICE_NAME}
+            if systemctl is-active --quiet ${SERVICE_NAME}; then
+                success "Service restarted"
+            else
+                warn "Service failed to restart. Check: journalctl -u ${SERVICE_NAME}"
+            fi
+        fi
     else
         warn "Configuration file not found"
         read -p "Press Enter to continue..."
@@ -761,6 +846,15 @@ run_main_menu_loop() {
 
 # Check root for all operations
 check_root || error "This script must be run as root"
+
+# Handle CLI arguments
+case "${1:-}" in
+    setup-firewall)
+        PORT=$(grep "^listen:" -A1 "$CONFIG_PATH" | grep addr | sed 's/.*:\([0-9]*\)".*/\1/')
+        [[ -n "$PORT" ]] && configure_iptables "$PORT"
+        exit 0
+        ;;
+esac
 
 # Detect if running interactively or piped
 if [[ -t 0 ]]; then
