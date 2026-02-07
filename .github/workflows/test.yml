@@ -121,6 +121,8 @@ jobs:
         run: |
           mkdir -p gui/bin
           echo "dummy" > gui/bin/paqet
+          mkdir -p gui/frontend/dist
+          echo "<html></html>" > gui/frontend/dist/index.html
 
       - name: Run Go Tests
         working-directory: gui
