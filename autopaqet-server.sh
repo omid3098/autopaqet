@@ -8,10 +8,10 @@ set -e
 # =============================================================================
 # Configuration
 # =============================================================================
-AUTOPAQET_PORT="${AUTOPAQET_PORT:-443}"
+AUTOPAQET_PORT="${AUTOPAQET_PORT:-9999}"
 AUTOPAQET_LOCAL_FLAG="${AUTOPAQET_LOCAL_FLAG:-PA}"
-AUTOPAQET_KCP_MODE="${AUTOPAQET_KCP_MODE:-fast3}"
-AUTOPAQET_CONN="${AUTOPAQET_CONN:-2}"
+AUTOPAQET_KCP_MODE="${AUTOPAQET_KCP_MODE:-fast}"
+AUTOPAQET_CONN="${AUTOPAQET_CONN:-1}"
 AUTOPAQET_SCRIPTS_REPO="https://raw.githubusercontent.com/omid3098/autopaqet/main"
 RELEASE_BASE_URL="https://github.com/omid3098/autopaqet/releases/download"
 RELEASE_TAG="v1.0.0"
@@ -100,7 +100,7 @@ detect_network() {
 # =============================================================================
 
 configure_iptables() {
-    local port="${1:-443}"
+    local port="${1:-9999}"
     iptables -t raw -C PREROUTING -p tcp --dport ${port} -j NOTRACK 2>/dev/null || \
         iptables -t raw -I PREROUTING -p tcp --dport ${port} -j NOTRACK
     iptables -t raw -C OUTPUT -p tcp --sport ${port} -j NOTRACK 2>/dev/null || \
@@ -111,7 +111,7 @@ configure_iptables() {
 }
 
 remove_iptables() {
-    local port="${1:-443}"
+    local port="${1:-9999}"
     iptables -t raw -D PREROUTING -p tcp --dport ${port} -j NOTRACK 2>/dev/null || true
     iptables -t raw -D OUTPUT -p tcp --sport ${port} -j NOTRACK 2>/dev/null || true
     iptables -t mangle -D OUTPUT -p tcp --sport ${port} --tcp-flags RST RST -j DROP 2>/dev/null || true
@@ -167,7 +167,6 @@ do_fresh_install() {
     # Step 3: Configure UFW
     info "Configuring firewall..."
     if command -v ufw &>/dev/null; then
-        ufw allow 443/tcp >/dev/null 2>&1 || true
         ufw allow ${AUTOPAQET_PORT}/tcp >/dev/null 2>&1 || true
         success "UFW configured"
     else

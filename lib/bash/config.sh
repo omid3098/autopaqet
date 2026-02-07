@@ -12,11 +12,11 @@ create_server_config() {
     local interface="$1"
     local server_ip="$2"
     local router_mac="$3"
-    local port="${4:-443}"
+    local port="${4:-9999}"
     local secret_key="$5"
     local local_flag="${6:-PA}"
-    local kcp_mode="${7:-fast3}"
-    local conn="${8:-2}"
+    local kcp_mode="${7:-fast}"
+    local conn="${8:-1}"
 
     # Validate local_flag
     case "$local_flag" in
@@ -70,8 +70,8 @@ create_client_config() {
     local local_port="${6:-0}"  # 0 means random
     local local_flag="${7:-PA}"
     local remote_flag="${8:-PA}"
-    local kcp_mode="${9:-fast3}"
-    local conn="${10:-2}"
+    local kcp_mode="${9:-fast}"
+    local conn="${10:-1}"
 
     # Validate flags
     case "$local_flag" in

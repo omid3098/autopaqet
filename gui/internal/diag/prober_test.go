@@ -409,7 +409,7 @@ func TestVerifyTunnel_DNSWarning(t *testing.T) {
 
 func TestBuildSuggestions_TunnelVerifyFailed(t *testing.T) {
 	opts := baseOpts()
-	// Simulate default KCP settings (empty = defaults to fast3/2/aes)
+	// Simulate default KCP settings (empty = defaults to fast/1/aes)
 	opts.ConfigOpts.Mode = ""
 	opts.ConfigOpts.Conn = 0
 	opts.ConfigOpts.Block = ""
@@ -439,7 +439,7 @@ func TestBuildSuggestions_TunnelVerifyFailed(t *testing.T) {
 		if strings.Contains(s, "MUST match the server") {
 			hasKCPSuggestion = true
 		}
-		if strings.Contains(s, "mode=fast3") {
+		if strings.Contains(s, "mode=fast") {
 			hasModeMention = true
 		}
 	}
@@ -447,7 +447,7 @@ func TestBuildSuggestions_TunnelVerifyFailed(t *testing.T) {
 		t.Error("expected KCP parameter match suggestion when tunnel verify fails")
 	}
 	if !hasModeMention {
-		t.Error("expected mode=fast3 in suggestion (default applied)")
+		t.Error("expected mode=fast in suggestion (default applied)")
 	}
 
 	// Should NOT suggest changing flags/port since tunnel verify failed (server IS receiving)

@@ -157,11 +157,11 @@ func (p *Prober) Run(ctx context.Context, opts *RunOptions) *Result {
 	// Record client config for diagnostic report
 	cfgMode := opts.ConfigOpts.Mode
 	if cfgMode == "" {
-		cfgMode = "fast3"
+		cfgMode = "fast"
 	}
 	cfgConn := opts.ConfigOpts.Conn
 	if cfgConn == 0 {
-		cfgConn = 2
+		cfgConn = 1
 	}
 	cfgBlock := opts.ConfigOpts.Block
 	if cfgBlock == "" {
@@ -460,11 +460,11 @@ func (p *Prober) buildSuggestions(opts *RunOptions, result *Result) []string {
 	if tunnelVerifyFailed && allPingOK {
 		mode := opts.ConfigOpts.Mode
 		if mode == "" {
-			mode = "fast3"
+			mode = "fast"
 		}
 		conn := opts.ConfigOpts.Conn
 		if conn == 0 {
-			conn = 2
+			conn = 1
 		}
 		block := opts.ConfigOpts.Block
 		if block == "" {

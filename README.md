@@ -22,6 +22,52 @@ irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.p
 
 ---
 
+## Configuration Guidelines
+
+> **These guidelines are based on the [paqet project documentation](https://github.com/hanselime/paqet). Failing to follow them can cause connection failures.**
+
+### Port Selection
+
+**Do NOT use standard ports (80, 443, etc.)** for the server listen port. The required iptables rules (NOTRACK, RST DROP) apply to all TCP traffic on the chosen port. Using a standard port means these rules also affect outgoing connections from the server to those ports, breaking normal traffic.
+
+Use a non-standard port like `9999`, `8388`, or any high port not used by common services.
+
+### Required Server iptables Rules
+
+The server must configure iptables to prevent the OS kernel from interfering with paqet's raw packets. Replace `<PORT>` with your chosen port:
+
+```bash
+sudo iptables -t raw -A PREROUTING -p tcp --dport <PORT> -j NOTRACK
+sudo iptables -t raw -A OUTPUT -p tcp --sport <PORT> -j NOTRACK
+sudo iptables -t mangle -A OUTPUT -p tcp --sport <PORT> --tcp-flags RST RST -j DROP
+```
+
+The AutoPaqet server installer configures these automatically.
+
+### Default Values
+
+| Setting | Default | Valid Values |
+|---------|---------|-------------|
+| Port | `9999` | Any non-standard port (avoid 80, 443) |
+| KCP Mode | `fast` | `normal`, `fast`, `fast2`, `fast3`, `manual` |
+| Connections | `1` | 1-256 |
+| Local Flag | `PA` | `S` (SYN), `PA` (PSH+ACK), `A` (ACK) |
+| Encryption | `aes` | `aes`, `aes-128`, `aes-192`, `salsa20`, `blowfish`, `twofish`, `none`, etc. |
+
+### Client-Server Settings Must Match
+
+The following settings **must be identical** on both client and server:
+- **KCP mode** (e.g., both `fast`)
+- **Connections** (e.g., both `1`)
+- **Encryption block** (e.g., both `aes`)
+- **Secret key**
+
+The client's `remote_flag` must match the server's `local_flag`, and vice versa.
+
+For full configuration reference, see the [paqet example configs](https://github.com/hanselime/paqet/tree/master/example).
+
+---
+
 ## Interactive Mode
 
 Both scripts support an interactive menu when run directly (not piped).

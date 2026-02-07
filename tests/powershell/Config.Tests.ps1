@@ -298,22 +298,22 @@ Describe "New-ClientConfiguration connection tuning" {
         $content | Should -Match 'remote_flag:\s*\["PA"\]'
     }
 
-    It "uses default kcp mode fast3 when not specified" {
+    It "uses default kcp mode fast when not specified" {
         $content = New-ClientConfiguration `
             -NetworkConfig $script:DefaultNetworkConfig `
             -ServerAddress "10.0.0.1:9999" `
             -SecretKey "test-key"
 
-        $content | Should -Match 'mode:\s*"fast3"'
+        $content | Should -Match 'mode:\s*"fast"'
     }
 
-    It "uses default conn 2 when not specified" {
+    It "uses default conn 1 when not specified" {
         $content = New-ClientConfiguration `
             -NetworkConfig $script:DefaultNetworkConfig `
             -ServerAddress "10.0.0.1:9999" `
             -SecretKey "test-key"
 
-        $content | Should -Match 'conn:\s*2'
+        $content | Should -Match 'conn:\s*1'
     }
 
     It "applies custom LocalFlag S" {

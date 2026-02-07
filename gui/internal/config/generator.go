@@ -24,8 +24,8 @@ type Options struct {
 	SocksPass   string
 
 	// KCP
-	Mode  string // default fast3
-	Conn  int    // default 2
+	Mode  string // default fast
+	Conn  int    // default 1
 	MTU   int
 	Block string // default aes
 
@@ -83,11 +83,11 @@ func Generate(opts *Options) (string, error) {
 	}
 	mode := opts.Mode
 	if mode == "" {
-		mode = "fast3"
+		mode = "fast"
 	}
 	conn := opts.Conn
 	if conn == 0 {
-		conn = 2
+		conn = 1
 	}
 	block := opts.Block
 	if block == "" {

@@ -73,8 +73,8 @@ func TestGenerateDefaultValues(t *testing.T) {
 	if !strings.Contains(out, "127.0.0.1:1080") {
 		t.Error("expected default SOCKS5 listen address 127.0.0.1:1080")
 	}
-	if !strings.Contains(out, "fast3") {
-		t.Error("expected default KCP mode fast3")
+	if !strings.Contains(out, "mode: fast\n") {
+		t.Error("expected default KCP mode fast")
 	}
 	if !strings.Contains(out, "aes") {
 		t.Error("expected default block cipher aes")

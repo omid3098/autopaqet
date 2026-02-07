@@ -94,16 +94,16 @@ teardown() {
     [[ "$result" == *'local_flag: ["PA"]'* ]]
 }
 
-@test "create_server_config uses default kcp mode fast3" {
+@test "create_server_config uses default kcp mode fast" {
     source "$BATS_TEST_DIRNAME/../../lib/bash/config.sh"
     result=$(create_server_config "eth0" "1.2.3.4" "aa:bb:cc:dd:ee:ff" "443" "secret")
-    [[ "$result" == *'mode: "fast3"'* ]]
+    [[ "$result" == *'mode: "fast"'* ]]
 }
 
-@test "create_server_config uses default conn 2" {
+@test "create_server_config uses default conn 1" {
     source "$BATS_TEST_DIRNAME/../../lib/bash/config.sh"
     result=$(create_server_config "eth0" "1.2.3.4" "aa:bb:cc:dd:ee:ff" "443" "secret")
-    [[ "$result" == *'conn: 2'* ]]
+    [[ "$result" == *'conn: 1'* ]]
 }
 
 @test "create_server_config uses custom local_flag S" {
@@ -143,16 +143,16 @@ teardown() {
     [[ "$result" == *'remote_flag: ["PA"]'* ]]
 }
 
-@test "create_client_config uses default kcp mode fast3" {
+@test "create_client_config uses default kcp mode fast" {
     source "$BATS_TEST_DIRNAME/../../lib/bash/config.sh"
     result=$(create_client_config "eth0" "192.168.1.100" "aa:bb:cc:dd:ee:ff" "1.2.3.4:443" "secret")
-    [[ "$result" == *'mode: "fast3"'* ]]
+    [[ "$result" == *'mode: "fast"'* ]]
 }
 
-@test "create_client_config uses default conn 2" {
+@test "create_client_config uses default conn 1" {
     source "$BATS_TEST_DIRNAME/../../lib/bash/config.sh"
     result=$(create_client_config "eth0" "192.168.1.100" "aa:bb:cc:dd:ee:ff" "1.2.3.4:443" "secret")
-    [[ "$result" == *'conn: 2'* ]]
+    [[ "$result" == *'conn: 1'* ]]
 }
 
 @test "create_client_config applies custom local_flag S" {

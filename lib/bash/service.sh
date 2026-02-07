@@ -191,6 +191,5 @@ configure_ufw() {
         return 1
     fi
 
-    ufw allow 443/tcp >/dev/null 2>&1 || true
     ufw allow ${port}/tcp >/dev/null 2>&1 || true
 }

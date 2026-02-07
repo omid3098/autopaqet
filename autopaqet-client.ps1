@@ -376,8 +376,8 @@ function New-ClientConfig {
         [string]$SecretKey,
         [string]$LocalFlag = "PA",
         [string]$RemoteFlag = "PA",
-        [string]$KcpMode = "fast3",
-        [int]$Conn = 2
+        [string]$KcpMode = "fast",
+        [int]$Conn = 1
     )
 
     $randomPort = Get-Random -Minimum 10000 -Maximum 65000
@@ -581,8 +581,8 @@ function Invoke-FreshInstall {
         # Connection tuning env vars (with defaults)
         $localFlag = if ($env:AUTOPAQET_LOCAL_FLAG) { $env:AUTOPAQET_LOCAL_FLAG } else { "PA" }
         $remoteFlag = if ($env:AUTOPAQET_REMOTE_FLAG) { $env:AUTOPAQET_REMOTE_FLAG } else { "PA" }
-        $kcpMode = if ($env:AUTOPAQET_KCP_MODE) { $env:AUTOPAQET_KCP_MODE } else { "fast3" }
-        $connCount = if ($env:AUTOPAQET_CONN) { [int]$env:AUTOPAQET_CONN } else { 2 }
+        $kcpMode = if ($env:AUTOPAQET_KCP_MODE) { $env:AUTOPAQET_KCP_MODE } else { "fast" }
+        $connCount = if ($env:AUTOPAQET_CONN) { [int]$env:AUTOPAQET_CONN } else { 1 }
 
         # Validate
         $validFlags = @("S", "PA", "A")

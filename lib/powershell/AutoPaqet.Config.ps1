@@ -37,9 +37,9 @@ function New-ClientConfiguration {
 
         [string]$RemoteFlag = "PA",
 
-        [string]$KcpMode = "fast3",
+        [string]$KcpMode = "fast",
 
-        [int]$Conn = 2
+        [int]$Conn = 1
     )
 
     # Validate TCP flag values
