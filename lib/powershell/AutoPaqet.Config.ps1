@@ -31,8 +31,31 @@ function New-ClientConfiguration {
 
         [int]$LocalPort = 0,
 
-        [string]$Socks5Listen = "127.0.0.1:1080"
+        [string]$Socks5Listen = "127.0.0.1:1080",
+
+        [string]$LocalFlag = "PA",
+
+        [string]$RemoteFlag = "PA",
+
+        [string]$KcpMode = "fast3",
+
+        [int]$Conn = 2
     )
+
+    # Validate TCP flag values
+    $validFlags = @("S", "PA", "A")
+    if ($LocalFlag -notin $validFlags) {
+        throw "Invalid LocalFlag '$LocalFlag'. Must be one of: $($validFlags -join ', ')"
+    }
+    if ($RemoteFlag -notin $validFlags) {
+        throw "Invalid RemoteFlag '$RemoteFlag'. Must be one of: $($validFlags -join ', ')"
+    }
+
+    # Validate KCP mode
+    $validModes = @("normal", "fast", "fast2", "fast3", "manual")
+    if ($KcpMode -notin $validModes) {
+        throw "Invalid KcpMode '$KcpMode'. Must be one of: $($validModes -join ', ')"
+    }
 
     # Use random port if not specified
     if ($LocalPort -eq 0) {
@@ -57,17 +80,17 @@ network:
     addr: "$localAddr"
     router_mac: "$($NetworkConfig.GatewayMAC)"
   tcp:
-    local_flag: ["S"]
-    remote_flag: ["PA"]
+    local_flag: ["$LocalFlag"]
+    remote_flag: ["$RemoteFlag"]
 
 server:
   addr: "$ServerAddress"
 
 transport:
   protocol: "kcp"
-  conn: 1
+  conn: $Conn
   kcp:
-    mode: "fast"
+    mode: "$KcpMode"
     key: "$SecretKey"
     block: "aes"
 "@

@@ -270,6 +270,143 @@ network:
     }
 }
 
+Describe "New-ClientConfiguration connection tuning" {
+    BeforeAll {
+        $script:DefaultNetworkConfig = @{
+            InterfaceName = "Ethernet"
+            NpcapGUID     = "\Device\NPF_{12345}"
+            LocalIP       = "192.168.1.100"
+            GatewayMAC    = "aa:bb:cc:dd:ee:ff"
+        }
+    }
+
+    It "uses default local_flag PA when not specified" {
+        $content = New-ClientConfiguration `
+            -NetworkConfig $script:DefaultNetworkConfig `
+            -ServerAddress "10.0.0.1:9999" `
+            -SecretKey "test-key"
+
+        $content | Should -Match 'local_flag:\s*\["PA"\]'
+    }
+
+    It "uses default remote_flag PA when not specified" {
+        $content = New-ClientConfiguration `
+            -NetworkConfig $script:DefaultNetworkConfig `
+            -ServerAddress "10.0.0.1:9999" `
+            -SecretKey "test-key"
+
+        $content | Should -Match 'remote_flag:\s*\["PA"\]'
+    }
+
+    It "uses default kcp mode fast3 when not specified" {
+        $content = New-ClientConfiguration `
+            -NetworkConfig $script:DefaultNetworkConfig `
+            -ServerAddress "10.0.0.1:9999" `
+            -SecretKey "test-key"
+
+        $content | Should -Match 'mode:\s*"fast3"'
+    }
+
+    It "uses default conn 2 when not specified" {
+        $content = New-ClientConfiguration `
+            -NetworkConfig $script:DefaultNetworkConfig `
+            -ServerAddress "10.0.0.1:9999" `
+            -SecretKey "test-key"
+
+        $content | Should -Match 'conn:\s*2'
+    }
+
+    It "applies custom LocalFlag S" {
+        $content = New-ClientConfiguration `
+            -NetworkConfig $script:DefaultNetworkConfig `
+            -ServerAddress "10.0.0.1:9999" `
+            -SecretKey "test-key" `
+            -LocalFlag "S"
+
+        $content | Should -Match 'local_flag:\s*\["S"\]'
+    }
+
+    It "applies custom RemoteFlag S" {
+        $content = New-ClientConfiguration `
+            -NetworkConfig $script:DefaultNetworkConfig `
+            -ServerAddress "10.0.0.1:9999" `
+            -SecretKey "test-key" `
+            -RemoteFlag "S"
+
+        $content | Should -Match 'remote_flag:\s*\["S"\]'
+    }
+
+    It "applies custom KcpMode normal" {
+        $content = New-ClientConfiguration `
+            -NetworkConfig $script:DefaultNetworkConfig `
+            -ServerAddress "10.0.0.1:9999" `
+            -SecretKey "test-key" `
+            -KcpMode "normal"
+
+        $content | Should -Match 'mode:\s*"normal"'
+    }
+
+    It "applies custom Conn 4" {
+        $content = New-ClientConfiguration `
+            -NetworkConfig $script:DefaultNetworkConfig `
+            -ServerAddress "10.0.0.1:9999" `
+            -SecretKey "test-key" `
+            -Conn 4
+
+        $content | Should -Match 'conn:\s*4'
+    }
+
+    It "rejects invalid LocalFlag value" {
+        {
+            New-ClientConfiguration `
+                -NetworkConfig $script:DefaultNetworkConfig `
+                -ServerAddress "10.0.0.1:9999" `
+                -SecretKey "test-key" `
+                -LocalFlag "INVALID"
+        } | Should -Throw "*Invalid LocalFlag*"
+    }
+
+    It "rejects invalid RemoteFlag value" {
+        {
+            New-ClientConfiguration `
+                -NetworkConfig $script:DefaultNetworkConfig `
+                -ServerAddress "10.0.0.1:9999" `
+                -SecretKey "test-key" `
+                -RemoteFlag "XYZ"
+        } | Should -Throw "*Invalid RemoteFlag*"
+    }
+
+    It "rejects invalid KcpMode value" {
+        {
+            New-ClientConfiguration `
+                -NetworkConfig $script:DefaultNetworkConfig `
+                -ServerAddress "10.0.0.1:9999" `
+                -SecretKey "test-key" `
+                -KcpMode "turbo"
+        } | Should -Throw "*Invalid KcpMode*"
+    }
+
+    It "preserves other config values when custom flags specified" {
+        $content = New-ClientConfiguration `
+            -NetworkConfig $script:DefaultNetworkConfig `
+            -ServerAddress "10.0.0.1:9999" `
+            -SecretKey "test-key" `
+            -LocalFlag "A" `
+            -RemoteFlag "S" `
+            -KcpMode "fast2" `
+            -Conn 1
+
+        $content | Should -Match 'role:\s*"client"'
+        $content | Should -Match 'interface:\s*"Ethernet"'
+        $content | Should -Match 'addr:\s*"10\.0\.0\.1:9999"'
+        $content | Should -Match 'key:\s*"test-key"'
+        $content | Should -Match 'local_flag:\s*\["A"\]'
+        $content | Should -Match 'remote_flag:\s*\["S"\]'
+        $content | Should -Match 'mode:\s*"fast2"'
+        $content | Should -Match 'conn:\s*1'
+    }
+}
+
 Describe "Get-ConfigurationSummary" {
     BeforeAll {
         $script:TestConfigPath = Join-Path $script:TestDir "summary-test.yaml"

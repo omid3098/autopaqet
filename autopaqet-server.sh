@@ -8,7 +8,10 @@ set -e
 # =============================================================================
 # Configuration
 # =============================================================================
-AUTOPAQET_PORT="${AUTOPAQET_PORT:-9999}"
+AUTOPAQET_PORT="${AUTOPAQET_PORT:-443}"
+AUTOPAQET_LOCAL_FLAG="${AUTOPAQET_LOCAL_FLAG:-PA}"
+AUTOPAQET_KCP_MODE="${AUTOPAQET_KCP_MODE:-fast3}"
+AUTOPAQET_CONN="${AUTOPAQET_CONN:-2}"
 AUTOPAQET_SCRIPTS_REPO="https://raw.githubusercontent.com/omid3098/autopaqet/main"
 RELEASE_BASE_URL="https://github.com/omid3098/autopaqet/releases/download"
 RELEASE_TAG="v1.0.0"
@@ -108,6 +111,22 @@ do_fresh_install() {
     echo -e "${CYAN}=============================================${NC}"
     echo ""
 
+    # Ask admin for port
+    read -p "Enter server port [${AUTOPAQET_PORT}]: " input_port
+    if [[ -n "$input_port" ]]; then
+        AUTOPAQET_PORT="$input_port"
+    fi
+
+    # Validate settings
+    case "$AUTOPAQET_LOCAL_FLAG" in
+        S|PA|A) ;;
+        *) error "Invalid AUTOPAQET_LOCAL_FLAG '$AUTOPAQET_LOCAL_FLAG'. Must be S, PA, or A." ;;
+    esac
+    case "$AUTOPAQET_KCP_MODE" in
+        normal|fast|fast2|fast3|manual) ;;
+        *) error "Invalid AUTOPAQET_KCP_MODE '$AUTOPAQET_KCP_MODE'. Must be normal, fast, fast2, fast3, or manual." ;;
+    esac
+
     # Step 1: Update system
     info "Updating system packages..."
     apt-get update -qq
@@ -173,13 +192,13 @@ network:
     addr: "${SERVER_IP}:${AUTOPAQET_PORT}"
     router_mac: "${ROUTER_MAC}"
   tcp:
-    local_flag: ["PA"]
+    local_flag: ["${AUTOPAQET_LOCAL_FLAG}"]
 
 transport:
   protocol: "kcp"
-  conn: 1
+  conn: ${AUTOPAQET_CONN}
   kcp:
-    mode: "fast"
+    mode: "${AUTOPAQET_KCP_MODE}"
     key: "${SECRET_KEY}"
     block: "aes"
 EOF
@@ -259,9 +278,12 @@ show_install_complete() {
     echo -e "${GREEN}              INSTALLATION COMPLETE${NC}"
     echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
-    echo -e "${YELLOW}CLIENT CONFIGURATION:${NC}"
+    echo -e "${YELLOW}SERVER SETTINGS:${NC}"
     echo ""
     echo "  Server Address:  ${SERVER_IP}:${AUTOPAQET_PORT}"
+    echo "  TCP Local Flag:  ${AUTOPAQET_LOCAL_FLAG}"
+    echo "  KCP Mode:        ${AUTOPAQET_KCP_MODE}"
+    echo "  Connections:     ${AUTOPAQET_CONN}"
     echo "  Secret Key:      ${SECRET_KEY}"
     echo ""
     echo -e "${YELLOW}MANAGEMENT:${NC}"
@@ -559,6 +581,45 @@ do_config_edit_local_flag() {
     read -p "Press Enter to continue..."
 }
 
+do_config_edit_kcp_mode() {
+    echo ""
+    local current_mode="unknown"
+    if [[ -f "$CONFIG_PATH" ]]; then
+        current_mode=$(grep "mode:" "$CONFIG_PATH" | sed 's/.*mode:\s*"\([^"]*\)".*/\1/')
+    fi
+
+    echo -e "${CYAN}Current KCP Mode: [${current_mode}]${NC}"
+    echo ""
+    echo "  [1] normal - Standard mode"
+    echo "  [2] fast   - Fast mode"
+    echo "  [3] fast2  - Faster mode"
+    echo "  [4] fast3  - Most aggressive retransmission"
+    echo ""
+    echo -e "  ${YELLOW}[0] Cancel${NC}"
+    echo ""
+    read -p "Select option: " mode_choice
+
+    local new_mode=""
+    case $mode_choice in
+        1) new_mode="normal" ;;
+        2) new_mode="fast" ;;
+        3) new_mode="fast2" ;;
+        4) new_mode="fast3" ;;
+        0) return ;;
+        *) error "Invalid selection"; sleep 1; return ;;
+    esac
+
+    if [[ -f "$CONFIG_PATH" ]]; then
+        sed -i "s/\(mode:\s*\"\)[^\"]*/\1${new_mode}/" "$CONFIG_PATH"
+        success "KCP mode updated to: [${new_mode}]"
+        warn "Restart service for changes to take effect: sudo systemctl restart autopaqet"
+    else
+        error "Configuration file not found"
+    fi
+    echo ""
+    read -p "Press Enter to continue..."
+}
+
 do_config_edit_file() {
     if [[ -f "$CONFIG_PATH" ]]; then
         nano "$CONFIG_PATH"
@@ -629,7 +690,8 @@ show_config_menu() {
     echo "  [2] Edit Server Port"
     echo "  [3] Edit Secret Key"
     echo "  [4] Edit TCP Local Flag"
-    echo "  [5] Edit Config (nano)"
+    echo "  [5] Edit KCP Mode"
+    echo "  [6] Edit Config (nano)"
     echo ""
     echo -e "  ${YELLOW}[0] Back${NC}"
     echo ""
@@ -662,7 +724,8 @@ run_config_menu() {
             2) do_config_edit_port ;;
             3) do_config_edit_key ;;
             4) do_config_edit_local_flag ;;
-            5) do_config_edit_file ;;
+            5) do_config_edit_kcp_mode ;;
+            6) do_config_edit_file ;;
             *) echo -e "${RED}Invalid option${NC}"; sleep 1 ;;
         esac
     done

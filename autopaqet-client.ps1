@@ -9,7 +9,7 @@
         irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex
 
     With server configuration:
-        $env:AUTOPAQET_SERVER="1.2.3.4:9999"; $env:AUTOPAQET_KEY="your-key"; irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex
+        $env:AUTOPAQET_SERVER="1.2.3.4:443"; $env:AUTOPAQET_KEY="your-key"; irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex
 
     Interactive mode (run script directly):
         .\autopaqet-client.ps1
@@ -306,6 +306,10 @@ function Request-AdminElevation {
     $envParams = ""
     if ($env:AUTOPAQET_SERVER) { $envParams += "`$env:AUTOPAQET_SERVER='$env:AUTOPAQET_SERVER'; " }
     if ($env:AUTOPAQET_KEY) { $envParams += "`$env:AUTOPAQET_KEY='$env:AUTOPAQET_KEY'; " }
+    if ($env:AUTOPAQET_LOCAL_FLAG) { $envParams += "`$env:AUTOPAQET_LOCAL_FLAG='$env:AUTOPAQET_LOCAL_FLAG'; " }
+    if ($env:AUTOPAQET_REMOTE_FLAG) { $envParams += "`$env:AUTOPAQET_REMOTE_FLAG='$env:AUTOPAQET_REMOTE_FLAG'; " }
+    if ($env:AUTOPAQET_KCP_MODE) { $envParams += "`$env:AUTOPAQET_KCP_MODE='$env:AUTOPAQET_KCP_MODE'; " }
+    if ($env:AUTOPAQET_CONN) { $envParams += "`$env:AUTOPAQET_CONN='$env:AUTOPAQET_CONN'; " }
     $scriptUrl = "$($script:AutoPaqetRepoUrl)/autopaqet-client.ps1"
     $elevatedCmd = "${envParams}irm '$scriptUrl' | iex"
     Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $elevatedCmd
@@ -366,7 +370,15 @@ function Get-PaqetBinary {
 }
 
 function New-ClientConfig {
-    param([hashtable]$NetworkConfig, [string]$ServerAddress, [string]$SecretKey)
+    param(
+        [hashtable]$NetworkConfig,
+        [string]$ServerAddress,
+        [string]$SecretKey,
+        [string]$LocalFlag = "PA",
+        [string]$RemoteFlag = "PA",
+        [string]$KcpMode = "fast3",
+        [int]$Conn = 2
+    )
 
     $randomPort = Get-Random -Minimum 10000 -Maximum 65000
     $content = @"
@@ -385,17 +397,17 @@ network:
     addr: "$($NetworkConfig.LocalIP):$randomPort"
     router_mac: "$($NetworkConfig.GatewayMAC)"
   tcp:
-    local_flag: ["S"]
-    remote_flag: ["PA"]
+    local_flag: ["$LocalFlag"]
+    remote_flag: ["$RemoteFlag"]
 
 server:
   addr: "$ServerAddress"
 
 transport:
   protocol: "kcp"
-  conn: 1
+  conn: $Conn
   kcp:
-    mode: "fast"
+    mode: "$KcpMode"
     key: "$SecretKey"
     block: "aes"
 "@
@@ -540,11 +552,11 @@ function Invoke-FreshInstall {
             if ($isInteractive) {
                 Write-Host "`nServer address is REQUIRED. This is your paqet server's public IP." -ForegroundColor Yellow
                 do {
-                    $serverInput = Read-Host "Enter Server Address (e.g., 203.0.113.50:9999)"
+                    $serverInput = Read-Host "Enter Server Address (e.g., 203.0.113.50:443)"
                     if ([string]::IsNullOrWhiteSpace($serverInput)) {
                         Write-Warn "Server address cannot be empty."
                     } elseif (-not (Test-ServerAddress $serverInput)) {
-                        Write-Warn "Invalid format. Use IP:PORT (e.g., 1.2.3.4:9999)"
+                        Write-Warn "Invalid format. Use IP:PORT (e.g., 1.2.3.4:443)"
                         $serverInput = ""
                     }
                 } while ([string]::IsNullOrWhiteSpace($serverInput))
@@ -566,7 +578,27 @@ function Invoke-FreshInstall {
             $keyInput = & $script:ExePath secret
         }
 
-        New-ClientConfig -NetworkConfig $networkConfig -ServerAddress $serverInput -SecretKey $keyInput
+        # Connection tuning env vars (with defaults)
+        $localFlag = if ($env:AUTOPAQET_LOCAL_FLAG) { $env:AUTOPAQET_LOCAL_FLAG } else { "PA" }
+        $remoteFlag = if ($env:AUTOPAQET_REMOTE_FLAG) { $env:AUTOPAQET_REMOTE_FLAG } else { "PA" }
+        $kcpMode = if ($env:AUTOPAQET_KCP_MODE) { $env:AUTOPAQET_KCP_MODE } else { "fast3" }
+        $connCount = if ($env:AUTOPAQET_CONN) { [int]$env:AUTOPAQET_CONN } else { 2 }
+
+        # Validate
+        $validFlags = @("S", "PA", "A")
+        if ($localFlag -notin $validFlags) {
+            Write-ErrorAndExit "Invalid AUTOPAQET_LOCAL_FLAG '$localFlag'. Must be one of: $($validFlags -join ', ')"
+        }
+        if ($remoteFlag -notin $validFlags) {
+            Write-ErrorAndExit "Invalid AUTOPAQET_REMOTE_FLAG '$remoteFlag'. Must be one of: $($validFlags -join ', ')"
+        }
+        $validModes = @("normal", "fast", "fast2", "fast3", "manual")
+        if ($kcpMode -notin $validModes) {
+            Write-ErrorAndExit "Invalid AUTOPAQET_KCP_MODE '$kcpMode'. Must be one of: $($validModes -join ', ')"
+        }
+
+        New-ClientConfig -NetworkConfig $networkConfig -ServerAddress $serverInput -SecretKey $keyInput `
+            -LocalFlag $localFlag -RemoteFlag $remoteFlag -KcpMode $kcpMode -Conn $connCount
     } else {
         Write-Success "Configuration exists: $($script:ConfigFile)"
         Write-Warn "Using existing config. Delete client.yaml and re-run if network changed."
@@ -623,7 +655,7 @@ function Invoke-Uninstall {
 }
 
 function Show-ConfigurationMenu {
-    $options = @("View Current Configuration", "Edit Server Address", "Edit Secret Key", "Edit TCP Local Flag", "Re-detect Network")
+    $options = @("View Current Configuration", "Edit Server Address", "Edit Secret Key", "Edit TCP Local Flag", "Edit TCP Remote Flag", "Edit KCP Mode", "Re-detect Network")
 
     while ($true) {
         $choice = Show-SubMenu -Title "CONFIGURATION" -Options $options
@@ -699,6 +731,63 @@ function Show-ConfigurationMenu {
                 Wait-ForKeypress
             }
             5 {
+                if (-not (Test-Path $script:ConfigFile)) {
+                    Write-Host "`nNo configuration file found. Run Fresh Install first." -ForegroundColor Yellow
+                } else {
+                    $content = Get-Content $script:ConfigFile -Raw
+                    $currentFlag = if ($content -match 'remote_flag:\s*\["([^"]+)"\]') { $Matches[1] } else { "unknown" }
+
+                    Write-Host "`nCurrent TCP Remote Flag: [$currentFlag]" -ForegroundColor Cyan
+                    Write-Host ""
+                    Write-Host "  [1] S   - SYN (connection setup)" -ForegroundColor White
+                    Write-Host "  [2] PA  - PSH+ACK (standard data)" -ForegroundColor White
+                    Write-Host "  [3] A   - ACK (acknowledgment)" -ForegroundColor White
+                    Write-Host ""
+                    Write-Host "  [0] Cancel" -ForegroundColor Yellow
+
+                    $flagChoice = Read-Host "`nSelect option"
+                    $newFlag = switch ($flagChoice) { "1" { "S" } "2" { "PA" } "3" { "A" } default { $null } }
+
+                    if ($newFlag) {
+                        $content = $content -replace '(remote_flag:\s*\[")[^"]+("\])', "`$1$newFlag`$2"
+                        Set-Content -Path $script:ConfigFile -Value $content -Encoding Ascii -NoNewline
+                        Write-Success "TCP remote_flag updated to: [$newFlag]"
+                    } elseif ($flagChoice -ne "0") {
+                        Write-Host "[ERROR] Invalid selection." -ForegroundColor Red
+                    }
+                }
+                Wait-ForKeypress
+            }
+            6 {
+                if (-not (Test-Path $script:ConfigFile)) {
+                    Write-Host "`nNo configuration file found. Run Fresh Install first." -ForegroundColor Yellow
+                } else {
+                    $content = Get-Content $script:ConfigFile -Raw
+                    $currentMode = if ($content -match 'mode:\s*"([^"]+)"') { $Matches[1] } else { "unknown" }
+
+                    Write-Host "`nCurrent KCP Mode: [$currentMode]" -ForegroundColor Cyan
+                    Write-Host ""
+                    Write-Host "  [1] normal - Standard mode" -ForegroundColor White
+                    Write-Host "  [2] fast   - Fast mode" -ForegroundColor White
+                    Write-Host "  [3] fast2  - Faster mode" -ForegroundColor White
+                    Write-Host "  [4] fast3  - Most aggressive retransmission" -ForegroundColor White
+                    Write-Host ""
+                    Write-Host "  [0] Cancel" -ForegroundColor Yellow
+
+                    $modeChoice = Read-Host "`nSelect option"
+                    $newMode = switch ($modeChoice) { "1" { "normal" } "2" { "fast" } "3" { "fast2" } "4" { "fast3" } default { $null } }
+
+                    if ($newMode) {
+                        $content = $content -replace '(mode:\s*)"[^"]+"', "`$1`"$newMode`""
+                        Set-Content -Path $script:ConfigFile -Value $content -Encoding Ascii -NoNewline
+                        Write-Success "KCP mode updated to: [$newMode]"
+                    } elseif ($modeChoice -ne "0") {
+                        Write-Host "[ERROR] Invalid selection." -ForegroundColor Red
+                    }
+                }
+                Wait-ForKeypress
+            }
+            7 {
                 Write-Info "Re-detecting network configuration..."
                 try {
                     $networkConfig = Get-NetworkConfiguration
@@ -890,7 +979,7 @@ ONE-LINER INSTALLATION:
     irm https://raw.githubusercontent.com/omid3098/autopaqet/main/autopaqet-client.ps1 | iex
 
 WITH SERVER CONFIGURATION:
-    `$env:AUTOPAQET_SERVER="1.2.3.4:9999"; `$env:AUTOPAQET_KEY="your-key"; irm ... | iex
+    `$env:AUTOPAQET_SERVER="1.2.3.4:443"; `$env:AUTOPAQET_KEY="your-key"; irm ... | iex
 
 PARAMETERS:
     -Run    Start the client directly without showing menu
@@ -915,6 +1004,10 @@ if (-not (Test-AdminPrivileges)) {
             $envParams = ""
             if ($env:AUTOPAQET_SERVER) { $envParams += "`$env:AUTOPAQET_SERVER='$env:AUTOPAQET_SERVER'; " }
             if ($env:AUTOPAQET_KEY) { $envParams += "`$env:AUTOPAQET_KEY='$env:AUTOPAQET_KEY'; " }
+            if ($env:AUTOPAQET_LOCAL_FLAG) { $envParams += "`$env:AUTOPAQET_LOCAL_FLAG='$env:AUTOPAQET_LOCAL_FLAG'; " }
+            if ($env:AUTOPAQET_REMOTE_FLAG) { $envParams += "`$env:AUTOPAQET_REMOTE_FLAG='$env:AUTOPAQET_REMOTE_FLAG'; " }
+            if ($env:AUTOPAQET_KCP_MODE) { $envParams += "`$env:AUTOPAQET_KCP_MODE='$env:AUTOPAQET_KCP_MODE'; " }
+            if ($env:AUTOPAQET_CONN) { $envParams += "`$env:AUTOPAQET_CONN='$env:AUTOPAQET_CONN'; " }
             $scriptUrl = "$($script:AutoPaqetRepoUrl)/autopaqet-client.ps1"
             $elevatedCmd = "${envParams}irm '$scriptUrl' | iex"
             Start-Process powershell.exe -Verb RunAs -ArgumentList `

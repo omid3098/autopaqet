@@ -7,13 +7,28 @@ DEFAULT_SERVER_CONFIG="/etc/autopaqet/server.yaml"
 DEFAULT_CLIENT_CONFIG="$HOME/.autopaqet/client.yaml"
 
 # Create server configuration content
-# Usage: content=$(create_server_config "$INTERFACE" "$SERVER_IP" "$ROUTER_MAC" "$PORT" "$SECRET_KEY")
+# Usage: content=$(create_server_config "$INTERFACE" "$SERVER_IP" "$ROUTER_MAC" "$PORT" "$SECRET_KEY" "$LOCAL_FLAG" "$KCP_MODE" "$CONN")
 create_server_config() {
     local interface="$1"
     local server_ip="$2"
     local router_mac="$3"
-    local port="${4:-9999}"
+    local port="${4:-443}"
     local secret_key="$5"
+    local local_flag="${6:-PA}"
+    local kcp_mode="${7:-fast3}"
+    local conn="${8:-2}"
+
+    # Validate local_flag
+    case "$local_flag" in
+        S|PA|A) ;;
+        *) echo "Error: Invalid local_flag '$local_flag'. Must be S, PA, or A." >&2; return 1 ;;
+    esac
+
+    # Validate kcp_mode
+    case "$kcp_mode" in
+        normal|fast|fast2|fast3|manual) ;;
+        *) echo "Error: Invalid kcp_mode '$kcp_mode'. Must be normal, fast, fast2, fast3, or manual." >&2; return 1 ;;
+    esac
 
     cat << EOF
 # AutoPaqet Server Configuration
@@ -32,20 +47,20 @@ network:
     addr: "${server_ip}:${port}"
     router_mac: "${router_mac}"
   tcp:
-    local_flag: ["PA"]
+    local_flag: ["${local_flag}"]
 
 transport:
   protocol: "kcp"
-  conn: 1
+  conn: ${conn}
   kcp:
-    mode: "fast"
+    mode: "${kcp_mode}"
     key: "${secret_key}"
     block: "aes"
 EOF
 }
 
 # Create client configuration content
-# Usage: content=$(create_client_config "$INTERFACE" "$LOCAL_IP" "$ROUTER_MAC" "$SERVER_ADDR" "$SECRET_KEY")
+# Usage: content=$(create_client_config "$INTERFACE" "$LOCAL_IP" "$ROUTER_MAC" "$SERVER_ADDR" "$SECRET_KEY" "$LOCAL_PORT" "$LOCAL_FLAG" "$REMOTE_FLAG" "$KCP_MODE" "$CONN")
 create_client_config() {
     local interface="$1"
     local local_ip="$2"
@@ -53,6 +68,24 @@ create_client_config() {
     local server_addr="$4"
     local secret_key="$5"
     local local_port="${6:-0}"  # 0 means random
+    local local_flag="${7:-PA}"
+    local remote_flag="${8:-PA}"
+    local kcp_mode="${9:-fast3}"
+    local conn="${10:-2}"
+
+    # Validate flags
+    case "$local_flag" in
+        S|PA|A) ;;
+        *) echo "Error: Invalid local_flag '$local_flag'. Must be S, PA, or A." >&2; return 1 ;;
+    esac
+    case "$remote_flag" in
+        S|PA|A) ;;
+        *) echo "Error: Invalid remote_flag '$remote_flag'. Must be S, PA, or A." >&2; return 1 ;;
+    esac
+    case "$kcp_mode" in
+        normal|fast|fast2|fast3|manual) ;;
+        *) echo "Error: Invalid kcp_mode '$kcp_mode'. Must be normal, fast, fast2, fast3, or manual." >&2; return 1 ;;
+    esac
 
     # Generate random port if not specified
     if [[ "$local_port" == "0" ]]; then
@@ -74,17 +107,17 @@ network:
     addr: "${local_ip}:${local_port}"
     router_mac: "${router_mac}"
   tcp:
-    local_flag: ["S"]
-    remote_flag: ["PA"]
+    local_flag: ["${local_flag}"]
+    remote_flag: ["${remote_flag}"]
 
 server:
   addr: "${server_addr}"
 
 transport:
   protocol: "kcp"
-  conn: 1
+  conn: ${conn}
   kcp:
-    mode: "fast"
+    mode: "${kcp_mode}"
     key: "${secret_key}"
     block: "aes"
 EOF
