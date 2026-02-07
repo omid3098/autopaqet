@@ -261,6 +261,51 @@ foreach ($file in $criticalFiles) {
 }
 
 # =============================================================================
+# Gate 6: Go Tests (GUI Backend)
+# =============================================================================
+Write-Section "GATE 6: Go Tests (GUI Backend)"
+
+$goAvailable = $false
+try {
+    $goVersion = go version 2>&1
+    $goAvailable = ($LASTEXITCODE -eq 0)
+} catch { }
+
+if ($goAvailable) {
+    $guiDir = Join-Path $scriptDir "gui"
+    if (Test-Path (Join-Path $guiDir "go.mod")) {
+        try {
+            # Create dummy embed file if needed
+            $binDir = Join-Path $guiDir "bin"
+            if (-not (Test-Path $binDir)) {
+                New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+            }
+            $dummyBin = Join-Path $binDir "paqet"
+            if (-not (Test-Path $dummyBin)) {
+                Set-Content -Path $dummyBin -Value "dummy"
+            }
+
+            Push-Location $guiDir
+            $result = go test ./internal/... -timeout 60s 2>&1
+            $testExitCode = $LASTEXITCODE
+            Pop-Location
+
+            if ($testExitCode -eq 0) {
+                Write-Gate -Name "Go Tests: GUI Backend" -Passed $true
+            } else {
+                Write-Gate -Name "Go Tests: GUI Backend" -Passed $false -Details "Tests failed"
+            }
+        } catch {
+            Write-Gate -Name "Go Tests: GUI Backend" -Passed $false -Details $_.Exception.Message
+        }
+    } else {
+        Write-Host "  GUI directory not found or missing go.mod" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  Go not available, skipping GUI backend tests" -ForegroundColor Yellow
+}
+
+# =============================================================================
 # Summary
 # =============================================================================
 $endTime = Get-Date

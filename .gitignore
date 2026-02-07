@@ -27,3 +27,13 @@ requirements/*
 
 # Windows reserved name created by bash redirects (>nul)
 nul
+
+# GUI build artifacts
+gui/build/bin/
+gui/frontend/node_modules/
+gui/frontend/dist/
+gui/frontend/wailsjs/
+
+# GUI embedded binaries (downloaded at dev/build time)
+gui/bin/*
+!gui/bin/.gitkeep
