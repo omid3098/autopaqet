@@ -13,7 +13,7 @@
 
   const stateLabels: Record<ConnectionState, string> = {
     idle: 'Disconnected',
-    starting: 'Connecting...',
+    testing: 'Testing...',
     connected: 'Connected',
     error: 'Error',
   };

@@ -3,9 +3,13 @@
 package process
 
 import (
+	"os/exec"
 	"syscall"
 	"time"
 )
+
+// hideWindow is a no-op on Linux.
+func hideWindow(cmd *exec.Cmd) {}
 
 func (m *Manager) killProcess() error {
 	if m.cmd == nil || m.cmd.Process == nil {

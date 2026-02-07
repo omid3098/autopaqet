@@ -1,11 +1,11 @@
 import { writable } from 'svelte/store';
+import { EventsOn } from '../../../wailsjs/runtime/runtime';
 
-export type ConnectionState = 'idle' | 'starting' | 'connected' | 'error';
+export type ConnectionState = 'idle' | 'testing' | 'connected' | 'error';
 
 export const connectionState = writable<ConnectionState>('idle');
 export const lastError = writable<string>('');
 
-// In production with Wails runtime, subscribe to events:
-// EventsOn('connection:state', (state: ConnectionState) => {
-//   connectionState.set(state);
-// });
+EventsOn('connection:state', (state: ConnectionState) => {
+  connectionState.set(state);
+});

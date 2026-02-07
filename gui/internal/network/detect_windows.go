@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
 )
 
 // WindowsDetector detects network configuration on Windows.
@@ -97,6 +98,7 @@ func extractWindowsMAC(arpOutput string) string {
 
 func defaultRunCommand(name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 	out, err := cmd.Output()
 	return strings.TrimSpace(string(out)), err
 }

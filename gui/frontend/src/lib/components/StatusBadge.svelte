@@ -5,7 +5,7 @@
 
   const stateColors: Record<ConnectionState, string> = {
     idle: 'var(--color-idle)',
-    starting: 'var(--color-starting)',
+    testing: 'var(--color-starting)',
     connected: 'var(--color-connected)',
     error: 'var(--color-error)',
   };

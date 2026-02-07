@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { activeProfile, activeProfileId, profiles } from '../lib/stores/profiles';
+  import { activeProfile, activeProfileId, profiles, type Profile } from '../lib/stores/profiles';
+  import { UpdateProfile } from '../../wailsjs/go/main/App';
 
-  // Settings are per-profile; show the active profile's settings
   let socksListen = '';
   let mode = 'fast3';
   let conn = 2;
@@ -23,8 +23,11 @@
   let showAdvanced = false;
   let showBuffers = false;
   let showTcp = false;
+  let saved = false;
+  let lastLoadedId = '';
 
-  $: if ($activeProfile) {
+  $: if ($activeProfile && $activeProfile.id !== lastLoadedId) {
+    lastLoadedId = $activeProfile.id;
     socksListen = $activeProfile.socks_listen || '127.0.0.1:1080';
     mode = $activeProfile.mode || 'fast3';
     conn = $activeProfile.conn || 2;
@@ -44,20 +47,29 @@
     sockbuf = $activeProfile.sockbuf || 0;
   }
 
-  function save() {
-    if (!$activeProfileId) return;
-    // In production: call UpdateProfile with the new values
-    profiles.update(list => list.map(p => {
-      if (p.id !== $activeProfileId) return p;
-      return {
-        ...p,
-        socks_listen: socksListen,
-        mode, conn, mtu, block, rcvwnd, sndwnd,
-        dshard, pshard, dscp, local_flag: localFlag,
-        remote_flag: remoteFlag, smuxbuf, streambuf,
-        tcpbuf, udpbuf, sockbuf,
-      };
-    }));
+  $: if (!$activeProfile) {
+    lastLoadedId = '';
+  }
+
+  async function save() {
+    if (!$activeProfileId || !$activeProfile) return;
+    const updated: Profile = {
+      ...$activeProfile,
+      socks_listen: socksListen,
+      mode, conn, mtu, block, rcvwnd, sndwnd,
+      dshard, pshard, dscp, local_flag: localFlag,
+      remote_flag: remoteFlag, smuxbuf, streambuf,
+      tcpbuf, udpbuf, sockbuf,
+    };
+
+    try {
+      await UpdateProfile(updated as any);
+      profiles.update(list => list.map(p => p.id === updated.id ? updated : p));
+      saved = true;
+      setTimeout(() => saved = false, 2000);
+    } catch (e) {
+      console.error('Failed to save settings:', e);
+    }
   }
 </script>
 
@@ -204,7 +216,9 @@
       {/if}
     </section>
 
-    <button class="btn-save" on:click={save}>Save Settings</button>
+    <button class="btn-save" on:click={save}>
+      {saved ? 'Saved!' : 'Save Settings'}
+    </button>
   {/if}
 </div>
 

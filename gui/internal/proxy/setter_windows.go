@@ -4,7 +4,9 @@ package proxy
 
 import (
 	"fmt"
+	"unsafe"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -68,7 +70,22 @@ func (s *WindowsSetter) IsSystemProxyEnabled() bool {
 }
 
 func notifyProxyChange() {
-	// In production, call InternetSetOption(INTERNET_OPTION_SETTINGS_CHANGED)
-	// and SendMessage(HWND_BROADCAST, WM_SETTINGCHANGE) via wininet.dll/user32.dll.
-	// Omitted here to avoid CGO dependency in the base build.
+	wininet := windows.NewLazyDLL("wininet.dll")
+	internetSetOption := wininet.NewProc("InternetSetOptionW")
+
+	// INTERNET_OPTION_SETTINGS_CHANGED = 39
+	internetSetOption.Call(0, 39, 0, 0)
+	// INTERNET_OPTION_REFRESH = 37
+	internetSetOption.Call(0, 37, 0, 0)
+
+	// Broadcast WM_SETTINGCHANGE so apps pick up the proxy change
+	user32 := windows.NewLazyDLL("user32.dll")
+	sendMessageTimeout := user32.NewProc("SendMessageTimeoutW")
+	internetSettings, _ := windows.UTF16PtrFromString("Internet Settings")
+	// HWND_BROADCAST=0xFFFF, WM_SETTINGCHANGE=0x001A, SMTO_ABORTIFHUNG=0x0002
+	sendMessageTimeout.Call(
+		0xFFFF, 0x001A, 0,
+		uintptr(unsafe.Pointer(internetSettings)),
+		0x0002, 1000, 0,
+	)
 }

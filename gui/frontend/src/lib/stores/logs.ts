@@ -1,4 +1,5 @@
 import { writable, derived } from 'svelte/store';
+import { EventsOn } from '../../../wailsjs/runtime/runtime';
 
 export type LogLevel = 'all' | 'info' | 'warn' | 'error';
 
@@ -25,7 +26,6 @@ export const filteredLogs = derived(
 export function addLogLine(line: string) {
   logLines.update(lines => {
     const newLines = [...lines, line];
-    // Keep last 5000 lines
     if (newLines.length > 5000) {
       return newLines.slice(-5000);
     }
@@ -37,5 +37,4 @@ export function clearLogs() {
   logLines.set([]);
 }
 
-// In production with Wails runtime:
-// EventsOn('log:line', (line: string) => addLogLine(line));
+EventsOn('log:line', (line: string) => addLogLine(line));

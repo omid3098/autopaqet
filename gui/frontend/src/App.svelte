@@ -1,11 +1,17 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import Sidebar from './lib/components/Sidebar.svelte';
   import Connect from './pages/Connect.svelte';
   import Profiles from './pages/Profiles.svelte';
   import Settings from './pages/Settings.svelte';
   import Logs from './pages/Logs.svelte';
+  import { loadProfiles } from './lib/stores/profiles';
 
   let currentPage = 'connect';
+
+  onMount(() => {
+    loadProfiles();
+  });
 </script>
 
 <main>

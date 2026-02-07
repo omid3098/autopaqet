@@ -1,25 +1,55 @@
 <script lang="ts">
   import { connectionState } from '../lib/stores/connection';
   import { profiles, activeProfileId, activeProfile } from '../lib/stores/profiles';
+  import { diagSteps, resetDiag } from '../lib/stores/diag';
   import StatusBadge from '../lib/components/StatusBadge.svelte';
+  import DiagProgress from '../lib/components/DiagProgress.svelte';
+  import { Connect, Disconnect, EnableSystemProxy, DisableSystemProxy, CancelConnect } from '../../wailsjs/go/main/App';
 
   let systemProxy = false;
+  let error = '';
 
-  // In production, these call Wails bindings:
-  // import { Connect, Disconnect, DetectNetwork } from '../../wailsjs/go/main/App';
-
-  function handleConnect() {
+  async function handleConnect() {
     if (!$activeProfileId) return;
-    // Connect($activeProfileId);
-    connectionState.set('starting');
-    // Simulated for dev
-    setTimeout(() => connectionState.set('connected'), 1000);
+    error = '';
+    resetDiag();
+    try {
+      await Connect($activeProfileId);
+    } catch (e: any) {
+      error = e?.message || String(e);
+    }
   }
 
-  function handleDisconnect() {
-    // Disconnect();
-    connectionState.set('idle');
+  async function handleDisconnect() {
+    error = '';
+    try {
+      await Disconnect();
+    } catch (e: any) {
+      error = e?.message || String(e);
+    }
     systemProxy = false;
+  }
+
+  async function handleCancel() {
+    try {
+      await CancelConnect();
+    } catch (e: any) {
+      // ignore cancel errors
+    }
+  }
+
+  async function handleProxyToggle() {
+    error = '';
+    try {
+      if (systemProxy) {
+        await EnableSystemProxy();
+      } else {
+        await DisableSystemProxy();
+      }
+    } catch (e: any) {
+      error = e?.message || String(e);
+      systemProxy = !systemProxy;
+    }
   }
 </script>
 
@@ -55,12 +85,20 @@
     </div>
   {/if}
 
+  {#if error}
+    <p class="error-msg">{error}</p>
+  {/if}
+
+  {#if $connectionState === 'testing'}
+    <DiagProgress steps={$diagSteps} />
+  {/if}
+
   <div class="controls">
     <div class="status-row">
       <StatusBadge state={$connectionState} />
       <span class="state-label">
         {#if $connectionState === 'idle'}Disconnected
-        {:else if $connectionState === 'starting'}Connecting...
+        {:else if $connectionState === 'testing'}Testing connection...
         {:else if $connectionState === 'connected'}Connected
         {:else if $connectionState === 'error'}Error
         {/if}
@@ -73,10 +111,10 @@
         on:click={handleConnect}
         disabled={!$activeProfileId}
       >
-        Connect
+        {$connectionState === 'error' ? 'Retry' : 'Connect'}
       </button>
-    {:else if $connectionState === 'starting'}
-      <button class="btn-connect" disabled>Connecting...</button>
+    {:else if $connectionState === 'testing'}
+      <button class="btn-cancel" on:click={handleCancel}>Cancel</button>
     {:else}
       <button class="btn-disconnect" on:click={handleDisconnect}>
         Disconnect
@@ -87,6 +125,7 @@
       <input
         type="checkbox"
         bind:checked={systemProxy}
+        on:change={handleProxyToggle}
         disabled={$connectionState !== 'connected'}
       />
       <span>Set as System Proxy</span>
@@ -148,6 +187,15 @@
     color: var(--text-primary);
   }
 
+  .error-msg {
+    color: var(--color-error);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: var(--border-radius);
+  }
+
   .controls {
     display: flex;
     flex-direction: column;
@@ -165,7 +213,7 @@
     color: var(--text-secondary);
   }
 
-  .btn-connect, .btn-disconnect {
+  .btn-connect, .btn-disconnect, .btn-cancel {
     width: 100%;
     padding: 0.75rem;
     border: none;
@@ -197,6 +245,16 @@
 
   .btn-disconnect:hover {
     opacity: 0.9;
+  }
+
+  .btn-cancel {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+  }
+
+  .btn-cancel:hover {
+    background: var(--bg-hover);
   }
 
   .checkbox-row {

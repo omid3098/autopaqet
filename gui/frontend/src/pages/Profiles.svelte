@@ -1,55 +1,80 @@
 <script lang="ts">
-  import { profiles, activeProfileId, type Profile } from '../lib/stores/profiles';
+  import { profiles, activeProfileId, loadProfiles, type Profile } from '../lib/stores/profiles';
   import ProfileCard from '../lib/components/ProfileCard.svelte';
   import ImportDialog from '../lib/components/ImportDialog.svelte';
   import ShareDialog from '../lib/components/ShareDialog.svelte';
+  import EditDialog from '../lib/components/EditDialog.svelte';
+  import { CreateProfile, UpdateProfile, DeleteProfile, ExportURI, ImportURI } from '../../wailsjs/go/main/App';
 
   let showImport = false;
   let showShare = false;
   let shareURI = '';
-
-  // In production, these call Wails bindings:
-  // import { ListProfiles, CreateProfile, DeleteProfile, ImportURI, ExportURI } from '../../wailsjs/go/main/App';
+  let showEdit = false;
+  let editingProfile: Profile | null = null;
 
   function handleSelect(e: CustomEvent<string>) {
     activeProfileId.set(e.detail);
   }
 
   function handleEdit(e: CustomEvent<string>) {
-    // Open edit dialog — Phase 3 polish
+    const p = $profiles.find(p => p.id === e.detail);
+    if (p) {
+      editingProfile = { ...p };
+      showEdit = true;
+    }
   }
 
-  function handleDelete(e: CustomEvent<string>) {
+  async function handleDelete(e: CustomEvent<string>) {
     if (confirm('Delete this profile?')) {
-      profiles.update(list => list.filter(p => p.id !== e.detail));
-      // DeleteProfile(e.detail);
+      try {
+        await DeleteProfile(e.detail);
+        await loadProfiles();
+      } catch (err) {
+        console.error('Failed to delete profile:', err);
+      }
     }
   }
 
-  function handleShare(e: CustomEvent<string>) {
-    const profile = $profiles.find(p => p.id === e.detail);
-    if (profile) {
-      // In production: shareURI = await ExportURI(e.detail);
-      shareURI = `paqet://${profile.key}@${profile.host}:${profile.port}#${profile.name}`;
+  async function handleShare(e: CustomEvent<string>) {
+    try {
+      shareURI = await ExportURI(e.detail);
       showShare = true;
+    } catch (err) {
+      const profile = $profiles.find(p => p.id === e.detail);
+      if (profile) {
+        shareURI = `paqet://${profile.key}@${profile.host}:${profile.port}#${profile.name}`;
+        showShare = true;
+      }
     }
   }
 
-  function handleImport(e: CustomEvent<string>) {
-    // In production: const profile = await ImportURI(e.detail);
-    // Then refresh profiles list
+  async function handleImport(e: CustomEvent<string>) {
+    try {
+      await ImportURI(e.detail);
+      await loadProfiles();
+    } catch (err) {
+      console.error('Failed to import URI:', err);
+    }
   }
 
   function addManually() {
-    // In production: open a form dialog to create profile manually
-    const newProfile: Profile = {
-      id: crypto.randomUUID(),
-      name: 'New Profile',
-      host: '',
-      port: 8080,
-      key: '',
-    };
-    profiles.update(list => [...list, newProfile]);
+    editingProfile = null;
+    showEdit = true;
+  }
+
+  async function handleSave(e: CustomEvent<Profile>) {
+    const saved = e.detail;
+    try {
+      const existing = $profiles.find(p => p.id === saved.id);
+      if (existing) {
+        await UpdateProfile(saved as any);
+      } else {
+        await CreateProfile(saved as any);
+      }
+      await loadProfiles();
+    } catch (err) {
+      console.error('Failed to save profile:', err);
+    }
   }
 </script>
 
@@ -89,6 +114,7 @@
 
 <ImportDialog bind:open={showImport} on:import={handleImport} />
 <ShareDialog bind:open={showShare} uri={shareURI} />
+<EditDialog bind:open={showEdit} profile={editingProfile} on:save={handleSave} />
 
 <style>
   .profiles-page {

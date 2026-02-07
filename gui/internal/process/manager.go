@@ -59,6 +59,7 @@ func (m *Manager) Start(configPath string) error {
 	m.mu.Unlock()
 
 	cmd := exec.Command(m.binaryPath, "run", "-c", configPath)
+	hideWindow(cmd)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

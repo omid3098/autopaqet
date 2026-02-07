@@ -1,4 +1,5 @@
 import { writable, derived } from 'svelte/store';
+import { ListProfiles } from '../../../wailsjs/go/main/App';
 
 export interface Profile {
   id: string;
@@ -40,3 +41,14 @@ export const activeProfile = derived(
     return $profiles.find(p => p.id === $activeProfileId) || null;
   }
 );
+
+export async function loadProfiles() {
+  try {
+    const list = await ListProfiles();
+    if (list) {
+      profiles.set(list as unknown as Profile[]);
+    }
+  } catch (e) {
+    console.error('Failed to load profiles:', e);
+  }
+}
