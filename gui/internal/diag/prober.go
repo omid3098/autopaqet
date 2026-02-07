@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/omid3098/autopaqet/gui/internal/config"
@@ -588,12 +587,6 @@ func (p *Prober) cancelled(result *Result) *Result {
 	return result
 }
 
-// hideConsole sets process attributes to prevent console windows on Windows.
-func hideConsole(cmd *exec.Cmd) {
-	if runtime.GOOS == "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
-	}
-}
 
 // extractHost extracts the host part from a "host:port" string.
 func extractHost(addr string) string {
