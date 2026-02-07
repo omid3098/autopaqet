@@ -103,3 +103,29 @@ jobs:
         run: |
           shellcheck lib/bash/*.sh || true
           shellcheck autopaqet-server.sh || true
+
+  go-tests:
+    name: Go Tests (GUI Backend)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.5'
+
+      - name: Create dummy embedded files
+        run: |
+          mkdir -p gui/bin
+          echo "dummy" > gui/bin/paqet
+
+      - name: Run Go Tests
+        working-directory: gui
+        run: go test ./internal/... -v -timeout 60s
+
+      - name: Verify Go Build
+        working-directory: gui
+        run: go build ./...

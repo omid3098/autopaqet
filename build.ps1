@@ -42,7 +42,9 @@ $requiredFiles = @(
     "lib\bash\menu.sh",
     "lib\bash\config.sh",
     "lib\bash\service.sh",
-    "lib\bash\install.sh"
+    "lib\bash\install.sh",
+    "gui\go.mod",
+    "gui\wails.json"
 )
 
 Write-Host "Checking required files..." -ForegroundColor Yellow
