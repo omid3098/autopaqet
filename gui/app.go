@@ -57,9 +57,9 @@ type App struct {
 	lastError     string
 	networkInfo   *NetworkInfo
 	manager       *process.Manager
-	detector      *network.WindowsDetector
-	npcapChecker  *npcap.WindowsChecker
-	proxySetter   *proxy.WindowsSetter
+	detector      network.Detector
+	npcapChecker  npcap.Checker
+	proxySetter   proxy.Setter
 	pacServer     *proxy.PACServer
 	configDir     string
 	activeProfile *profile.Profile
